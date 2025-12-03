@@ -1,0 +1,22 @@
+{
+  "name": "voice-axis-scan-webhook-examples",
+  "version": "1.0.0",
+  "description": "Testing and example scripts for Voice Axis Scan webhook API",
+  "scripts": {
+    "test:webhook": "node test-webhook.js",
+    "example:integration": "node example-client-integration.js"
+  },
+  "keywords": [
+    "webhook",
+    "api",
+    "voice-axis-scan",
+    "call-tracking"
+  ],
+  "dependencies": {
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}

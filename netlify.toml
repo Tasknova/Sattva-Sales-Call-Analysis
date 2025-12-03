@@ -1,0 +1,16 @@
+# Netlify configuration for SPA routing
+# Ensures all routes are handled by React Router
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  force = false
+
+[build]
+  publish = "dist"
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "18"
+
