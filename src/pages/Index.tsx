@@ -2,24 +2,20 @@ import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase, UserProfile } from "@/lib/supabase";
-import LandingPage from "@/components/LandingPage";
 import Dashboard from "@/components/Dashboard";
 import ProfilePage from "@/components/ProfilePage";
 import OnboardingFlow from "@/components/OnboardingFlow";
-import AuthModal from "@/components/AuthModal";
-import RoleSelection from "@/components/auth/RoleSelection";
-import SimpleAdminSignup from "@/components/auth/SimpleAdminSignup";
 import AdminLogin from "@/components/auth/AdminLogin";
 import LoginOptions from "@/components/auth/LoginOptions";
 import CompanyOnboarding from "@/components/auth/CompanyOnboarding";
 import ManagerLogin from "@/components/auth/ManagerLogin";
 import EmployeeLogin from "@/components/auth/EmployeeLogin";
 
-type ViewType = 'landing' | 'role-selection' | 'admin-signup' | 'admin-login' | 'login-options' | 'company-onboarding' | 'manager-login' | 'employee-login' | 'auth' | 'onboarding' | 'dashboard' | 'profile';
+type ViewType = 'admin-login' | 'login-options' | 'company-onboarding' | 'manager-login' | 'employee-login' | 'onboarding' | 'dashboard' | 'profile';
 
 const Index = () => {
   const { user, userRole, company, loading: authLoading } = useAuth();
-  const [currentView, setCurrentView] = useState<ViewType>('landing');
+  const [currentView, setCurrentView] = useState<ViewType>('login-options');
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [searchParams] = useSearchParams();
@@ -50,8 +46,8 @@ const Index = () => {
     }
 
     if (!user) {
-      console.log('No user, going to landing');
-      setCurrentView('landing');
+      console.log('No user, going to login options');
+      setCurrentView('login-options');
       return;
     }
 
@@ -135,22 +131,6 @@ const Index = () => {
     }
   };
 
-  const handleGetStarted = () => {
-    setCurrentView('role-selection');
-  };
-
-  const handleLogin = () => {
-    setCurrentView('login-options');
-  };
-
-  const handleSignup = () => {
-    setCurrentView('admin-signup');
-  };
-
-  const handleLoginOptions = () => {
-    setCurrentView('login-options');
-  };
-
   const handleAdminLogin = () => {
     setCurrentView('admin-login');
   };
@@ -161,10 +141,6 @@ const Index = () => {
 
   const handleEmployeeLogin = () => {
     setCurrentView('employee-login');
-  };
-
-  const handleAdminSignupComplete = () => {
-    setCurrentView('company-onboarding');
   };
 
   const handleCompanyOnboardingComplete = () => {
@@ -209,23 +185,8 @@ const Index = () => {
 
   // Render based on current view
   switch (currentView) {
-    case 'landing':
-      return <LandingPage onGetStarted={handleGetStarted} onLogin={handleLogin} onSignup={handleSignup} />;
-    
-    case 'role-selection':
-      return (
-        <RoleSelection
-          onSignup={handleSignup}
-          onLogin={handleLoginOptions}
-          onBack={() => setCurrentView('landing')}
-        />
-      );
-    
-    case 'admin-signup':
-      return <SimpleAdminSignup onComplete={handleAdminSignupComplete} onBack={() => setCurrentView('role-selection')} />;
-    
     case 'admin-login':
-      return <AdminLogin onComplete={handleAdminSignupComplete} onBack={() => setCurrentView('login-options')} />;
+      return <AdminLogin onComplete={handleCompanyOnboardingComplete} onBack={() => setCurrentView('login-options')} />;
     
     case 'login-options':
       return (
@@ -233,29 +194,18 @@ const Index = () => {
           onAdminLogin={handleAdminLogin}
           onManagerLogin={handleManagerLogin}
           onEmployeeLogin={handleEmployeeLogin}
-          onBack={() => setCurrentView('role-selection')}
+          onBack={() => setCurrentView('login-options')}
         />
       );
     
     case 'company-onboarding':
-      return <CompanyOnboarding onComplete={handleCompanyOnboardingComplete} onBack={() => setCurrentView('admin-signup')} />;
+      return <CompanyOnboarding onComplete={handleCompanyOnboardingComplete} onBack={() => setCurrentView('login-options')} />;
     
     case 'manager-login':
       return <ManagerLogin onComplete={handleManagerLoginComplete} onBack={() => setCurrentView('login-options')} />;
     
     case 'employee-login':
       return <EmployeeLogin onComplete={handleEmployeeLoginComplete} onBack={() => setCurrentView('login-options')} />;
-    
-    case 'auth':
-      return (
-        <>
-          <LandingPage onGetStarted={handleGetStarted} onLogin={handleLogin} onSignup={handleSignup} />
-          <AuthModal 
-            isOpen={true} 
-            onClose={() => setCurrentView('landing')} 
-          />
-        </>
-      );
     
     case 'onboarding':
       return <OnboardingFlow onComplete={handleOnboardingComplete} />;
@@ -267,7 +217,14 @@ const Index = () => {
       return <Dashboard onShowProfile={handleShowProfile} />;
     
     default:
-      return <LandingPage onGetStarted={handleGetStarted} onLogin={handleLogin} onSignup={handleSignup} />;
+      return (
+        <LoginOptions
+          onAdminLogin={handleAdminLogin}
+          onManagerLogin={handleManagerLogin}
+          onEmployeeLogin={handleEmployeeLogin}
+          onBack={() => setCurrentView('login-options')}
+        />
+      );
   }
 };
 

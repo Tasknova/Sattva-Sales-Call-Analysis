@@ -3,7 +3,20 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://lsuuivbaemjqmtztrjqq.supabase.co'
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxzdXVpdmJhZW1qcW10enRyanFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0OTUzMjMsImV4cCI6MjA3MzA3MTMyM30.0geG3EgNNZ5wH2ClKzZ_lwUgJlHRXr1CxcXo80ehVGM'
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  global: {
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'Prefer': 'return=representation'
+    }
+  },
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true
+  }
+})
 
 // Database types
 export interface Recording {
@@ -11,10 +24,8 @@ export interface Recording {
   user_id: string
   lead_id?: string
   call_history_id?: string
-  drive_file_id?: string
   file_name?: string
-  file_size?: number
-  stored_file_url?: string
+  recording_url?: string
   status?: 'processing' | 'transcribing' | 'analyzing' | 'completed' | 'failed' | 'queued' | 'pending' | 'uploaded'
   duration_seconds?: number
   transcript?: string
@@ -49,7 +60,7 @@ export interface Analysis {
   recordings?: {
     id: string
     file_name?: string
-    stored_file_url?: string
+    recording_url?: string
     status?: 'processing' | 'transcribing' | 'analyzing' | 'completed' | 'failed' | 'queued' | 'pending' | 'uploaded'
     call_history_id?: string
   }

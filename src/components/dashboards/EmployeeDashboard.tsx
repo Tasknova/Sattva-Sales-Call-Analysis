@@ -504,7 +504,7 @@ export default function EmployeeDashboard() {
           recordings (
             id,
             file_name,
-            stored_file_url,
+            recording_url,
             status,
             call_history_id
           )

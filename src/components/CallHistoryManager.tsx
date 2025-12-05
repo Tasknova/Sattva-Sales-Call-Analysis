@@ -242,7 +242,7 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
           recordings (
             id,
             file_name,
-            stored_file_url,
+            recording_url,
             status,
             call_history_id
           )

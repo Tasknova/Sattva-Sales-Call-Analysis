@@ -392,64 +392,36 @@ export default function AdminDashboard() {
       if (leadsError) {
         console.error('Error fetching leads:', leadsError);
       } else {
-        // Manually join with employees and managers tables
-        const leadsWithAssignments = await Promise.all(
-          (leadsData || []).map(async (lead) => {
+        // Create lookup maps for faster access (O(1) instead of O(n) queries)
+        const managersByUserId = new Map(managersData?.map(m => [m.user_id, { full_name: m.full_name, email: m.email }]) || []);
+        const managersById = new Map(managersData?.map(m => [m.id, { full_name: m.full_name, email: m.email }]) || []);
+        const employeesByUserId = new Map(employeesData?.map(e => [e.user_id, { full_name: e.full_name, email: e.email }]) || []);
+        const employeesById = new Map(employeesData?.map(e => [e.id, { full_name: e.full_name, email: e.email }]) || []);
+
+        // Process leads using lookup maps (much faster than individual queries)
+        const leadsWithAssignments = (leadsData || []).map((lead) => {
             let assignedEmployee = null;
             let assignedManager = null;
 
             // Check if assigned_to exists
             if (lead.assigned_to) {
-              // First check if it's a manager ID
-              const { data: mgrData } = await supabase
-                .from('managers')
-                .select('full_name, email')
-                .eq('id', lead.assigned_to)
-                .single();
+              // Check in managers first (by ID)
+              assignedManager = managersById.get(lead.assigned_to);
               
-              if (mgrData) {
-                assignedManager = mgrData;
-              } else {
-                // If not a manager, check employees by user_id
-                let { data: empData } = await supabase
-                  .from('employees')
-                  .select('full_name, email')
-                  .eq('user_id', lead.assigned_to)
-                  .single();
-                
-                // If not found by user_id, try by employee id
-                if (!empData) {
-                  const result = await supabase
-                    .from('employees')
-                    .select('full_name, email')
-                    .eq('id', lead.assigned_to)
-                    .single();
-                  empData = result.data;
-                }
-                
-                assignedEmployee = empData;
+              if (!assignedManager) {
+                // Check employees by user_id or id
+                assignedEmployee = employeesByUserId.get(lead.assigned_to) || employeesById.get(lead.assigned_to);
               }
             }
 
             // Check if user_id exists (manager or creator) - only if not already assigned
             if (lead.user_id && !assignedEmployee && !assignedManager) {
-              // Try to find in managers table
-              const { data: mgrData } = await supabase
-                .from('managers')
-                .select('full_name, email')
-                .eq('user_id', lead.user_id)
-                .single();
+              // Check in managers by user_id
+              assignedManager = managersByUserId.get(lead.user_id);
               
-              if (mgrData) {
-                assignedManager = mgrData;
-              } else {
-                // Try to find in employees table
-                const { data: empData } = await supabase
-                  .from('employees')
-                  .select('full_name, email')
-                  .eq('user_id', lead.user_id)
-                  .single();
-                assignedEmployee = empData;
+              if (!assignedManager) {
+                // Check in employees by user_id
+                assignedEmployee = employeesByUserId.get(lead.user_id);
               }
             }
 
@@ -458,8 +430,7 @@ export default function AdminDashboard() {
               assigned_employee: assignedEmployee,
               assigned_manager: assignedManager,
             };
-          })
-        );
+          });
 
         setLeads(leadsWithAssignments);
         console.log('Fetched leads:', leadsWithAssignments);
@@ -511,7 +482,7 @@ export default function AdminDashboard() {
       const employeeUserIds = employeesData?.map(emp => emp.user_id) || [];
       const { data: rawAnalysesData, error: analysesError } = await supabase
         .from('analyses')
-        .select(`*, recordings ( id, file_name, stored_file_url, status, call_history_id )`)
+        .select(`*, recordings ( id, file_name, recording_url, status, call_history_id )`)
         .in('user_id', employeeUserIds);
 
       let analysesData = rawAnalysesData as any[] | null;
@@ -1026,8 +997,20 @@ export default function AdminDashboard() {
       });
 
       setIsDeleteUserModalOpen(false);
+      
+      // Optimized: Remove deleted user from state instead of refetching everything
+      if (selectedUser.role === 'manager') {
+        setManagers(prev => prev.filter(m => m.id !== selectedUser.id));
+      } else {
+        setEmployees(prev => prev.filter(e => e.id !== selectedUser.id));
+        // Also update managers' employee lists
+        setManagers(prev => prev.map(m => ({
+          ...m,
+          employees: m.employees.filter(e => e.id !== selectedUser.id)
+        })));
+      }
+      
       setSelectedUser(null);
-      fetchUsers();
     } catch (error: any) {
       console.error('Error deleting user:', error);
       toast({

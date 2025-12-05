@@ -21,7 +21,7 @@ interface Analysis {
   recordings?: {
     id: string;
     file_name: string;
-    stored_file_url: string;
+    recording_url: string;
   };
   call_history?: {
     call_date?: string;
@@ -45,7 +45,7 @@ export default function EmployeeAnalysisPage() {
         // 1) Primary attempt: fetch analyses where analyses.user_id = employee user id
         const { data, error } = await supabase
           .from('analyses')
-          .select(`*, recordings (id, file_name, stored_file_url, call_history_id)`) 
+          .select(`*, recordings (id, file_name, recording_url, call_history_id)`) 
           .eq('user_id', filterUserId);
 
         if (!error && data && data.length > 0) {
@@ -108,7 +108,7 @@ export default function EmployeeAnalysisPage() {
         // Finally fetch analyses whose recording_id is in these recordingIds
         const { data: fallbackAnalyses, error: fallbackError } = await supabase
           .from('analyses')
-          .select(`*, recordings (id, file_name, stored_file_url, call_history_id)`)
+          .select(`*, recordings (id, file_name, recording_url, call_history_id)`)
           .in('recording_id', recordingIds)
           .order('created_at', { ascending: false });
 

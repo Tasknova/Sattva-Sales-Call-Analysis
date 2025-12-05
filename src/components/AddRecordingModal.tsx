@@ -281,9 +281,8 @@ export default function AddRecordingModal({ open, onOpenChange, onRecordingAdded
         .from('recordings')
         .insert({
           user_id: user.id,
-          drive_file_id: extractFileIdFromUrl(driveUrl),
           file_name: fileName,
-          stored_file_url: driveUrl,
+          recording_url: driveUrl,
           status: 'processing'
         })
         .select()

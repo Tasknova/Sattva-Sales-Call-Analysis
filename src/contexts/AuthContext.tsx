@@ -105,21 +105,22 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           console.log('Using first role:', firstRole);
           setUserRole(firstRole);
           
-          // Fetch company data for this role
+          // Fetch company data for this role using RPC (bypasses RLS)
           if (firstRole?.company_id) {
             console.log('Fetching company data for company_id:', firstRole.company_id);
-            const { data: companyData, error: companyError } = await supabase
-              .from('companies')
-              .select('*')
-              .eq('id', firstRole.company_id)
-              .single();
+            const { data: companies, error: companyError } = await supabase
+              .rpc('get_company_by_id', {
+                p_company_id: firstRole.company_id
+              });
 
             if (companyError) {
               console.error('Error fetching company:', companyError);
               setCompany(null);
+            } else if (companies && companies.length > 0) {
+              console.log('Company data fetched:', companies[0]);
+              setCompany(companies[0]);
             } else {
-              console.log('Company data fetched:', companyData);
-              setCompany(companyData);
+              setCompany(null);
             }
           } else {
             setCompany(null);
@@ -146,14 +147,13 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       console.log('User role fetched:', roleData);
       setUserRole(roleData);
 
-      // Fetch company data
+      // Fetch company data using RPC (bypasses RLS)
       if (roleData?.company_id) {
         console.log('Fetching company data for company_id:', roleData.company_id);
-        const { data: companyData, error: companyError } = await supabase
-          .from('companies')
-          .select('*')
-          .eq('id', roleData.company_id)
-          .single();
+        const { data: companies, error: companyError } = await supabase
+          .rpc('get_company_by_id', {
+            p_company_id: roleData.company_id
+          });
 
         if (companyError) {
           console.error('Error fetching company:', companyError);
@@ -163,15 +163,15 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           return;
         }
 
-        if (!companyData) {
+        if (!companies || companies.length === 0) {
           console.log('No company data found for company_id:', roleData.company_id);
           setCompany(null);
           setLoading(false);
           return;
         }
 
-        console.log('Company data fetched:', companyData);
-        setCompany(companyData);
+        console.log('Company data fetched:', companies[0]);
+        setCompany(companies[0]);
       } else {
         console.log('No company_id in role data');
         setCompany(null);
@@ -304,38 +304,36 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     try {
       console.log('Attempting manager login for:', email);
       
-      // Check if manager exists in managers table with correct credentials
-      const { data: manager, error: managerError } = await supabase
-        .from('managers')
-        .select('*')
-        .eq('email', email)
-        .eq('password', password)
-        .eq('is_active', true)
-        .single();
+      // Use RPC function to authenticate manager (bypasses RLS)
+      const { data: managers, error: managerError } = await supabase
+        .rpc('authenticate_manager', {
+          p_email: email,
+          p_password: password
+        });
 
-      if (managerError || !manager) {
+      if (managerError || !managers || managers.length === 0) {
         console.error('Manager not found or invalid credentials:', managerError);
         throw new Error('Invalid manager credentials');
       }
 
+      const manager = managers[0];
+
       console.log('Manager found:', manager);
       
-      // Fetch user role - specifically look for manager role FIRST
-      const { data: userRoleData, error: roleError } = await supabase
-        .from('user_roles')
-        .select('*')
-        .eq('user_id', manager.user_id)
-        .eq('role', 'manager')
-        .eq('is_active', true)
-        .single();
-
-      console.log('User role query result:', userRoleData);
-      console.log('User role query error:', roleError);
-
-      if (!userRoleData) {
+      // Check if role data is included (new function returns role info)
+      if (!manager.role || manager.role !== 'manager') {
         console.log('No manager role found for user:', manager.user_id);
         throw new Error('Manager role not found for this user');
       }
+
+      // Create userRoleData object from the returned data
+      const userRoleData = {
+        id: manager.role_id,
+        user_id: manager.user_id,
+        role: manager.role,
+        company_id: manager.role_company_id,
+        is_active: true
+      };
 
       console.log('Set user role in context:', userRoleData);
       console.log('User role data role field:', userRoleData.role);
@@ -376,22 +374,22 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       setUserRole(userRoleData);
       console.log('Set user in context:', mockUser);
 
-      // Fetch company data
+      // Fetch company data using RPC function (bypasses RLS)
       let companyData = null;
       if (userRoleData?.company_id) {
-        const { data: company, error: companyError } = await supabase
-          .from('companies')
-          .select('*')
-          .eq('id', userRoleData.company_id)
-          .single();
+        const { data: companies, error: companyError} = await supabase
+          .rpc('get_company_by_id', {
+            p_company_id: userRoleData.company_id
+          });
 
-        console.log('Company query result:', company);
-        console.log('Company query error:', companyError);
+        console.log('Manager company query result:', companies);
+        console.log('Manager company query error:', companyError);
 
-        if (company) {
+        if (companies && companies.length > 0) {
+          const company = companies[0];
           setCompany(company);
           companyData = company;
-          console.log('Set company in context:', company);
+          console.log('Set manager company in context:', company);
         }
       }
 
@@ -420,55 +418,89 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     try {
       console.log('Attempting admin login for:', email);
       
-      // First, try to sign in with Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      // Use RPC function to authenticate admin (bypasses RLS)
+      const { data: admins, error: adminError } = await supabase
+        .rpc('authenticate_admin', {
+          p_email: email,
+          p_password: password
+        });
 
-      if (authError) {
-        console.error('Supabase Auth error:', authError);
-        throw new Error('Invalid login credentials');
-      }
-
-      console.log('Supabase Auth successful, checking admin role...');
-
-      // Check if this user is an admin
-      const { data: userRoleData, error: roleError } = await supabase
-        .from('user_roles')
-        .select('*')
-        .eq('user_id', authData.user.id)
-        .eq('role', 'admin')
-        .eq('is_active', true)
-        .single();
-
-      if (roleError || !userRoleData) {
-        console.error('Admin role not found:', roleError);
-        // Sign out from Supabase Auth since this user is not an admin
-        await supabase.auth.signOut();
+      if (adminError || !admins || admins.length === 0) {
+        console.error('Admin not found or invalid credentials:', adminError);
         throw new Error('Invalid admin credentials');
       }
 
-      console.log('Admin role found:', userRoleData);
+      const admin = admins[0];
 
-      // Set the user in the context
-      setUser(authData.user);
+      console.log('Admin found:', admin);
+      
+      // Check if role data is included (new function returns role info)
+      if (!admin.role || admin.role !== 'admin') {
+        console.log('No admin role found for user:', admin.user_id);
+        throw new Error('Admin role not found for this user');
+      }
+
+      // Create userRoleData object from the returned data
+      const userRoleData = {
+        id: admin.role_id,
+        user_id: admin.user_id,
+        role: admin.role,
+        company_id: admin.role_company_id,
+        is_active: true
+      };
+
+      console.log('Set admin user role in context:', userRoleData);
+      console.log('User role data role field:', userRoleData.role);
+
+      // Create a mock user object for the session
+      const mockUser = {
+        id: admin.user_id,
+        email: admin.email,
+        user_metadata: {
+          full_name: admin.full_name,
+          role: 'admin'
+        },
+        app_metadata: {},
+        aud: 'authenticated',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        phone: '',
+        phone_confirmed_at: null,
+        last_sign_in_at: new Date().toISOString(),
+        role: 'authenticated',
+        factors: null,
+        identities: [],
+        email_confirmed_at: new Date().toISOString(),
+        recovery_sent_at: null,
+        new_email: null,
+        invited_at: null,
+        action_link: null,
+        email_change_sent_at: null,
+        new_phone: null,
+        phone_change_sent_at: null,
+        email_change_confirm_status: 0,
+        banned_until: null,
+        is_anonymous: false
+      } as any;
+
+      // Set the user in the context ONLY after all validations pass
+      setUser(mockUser);
       setUserRole(userRoleData);
-      console.log('Set user and role in context:', authData.user, userRoleData);
+      console.log('Set admin user in context:', mockUser);
 
-      // Fetch company data
+      // Fetch company data using RPC (bypasses RLS)
       let companyData = null;
       if (userRoleData?.company_id) {
-        const { data: company, error: companyError } = await supabase
-          .from('companies')
-          .select('*')
-          .eq('id', userRoleData.company_id)
-          .single();
+        const { data: companies, error: companyError } = await supabase
+          .rpc('get_company_by_id', {
+            p_company_id: userRoleData.company_id
+          });
 
-        console.log('Company query result:', company);
+        console.log('Company query result:', companies);
         console.log('Company query error:', companyError);
 
-        if (company) {
+        if (companies && companies.length > 0) {
+          const company = companies[0];
           setCompany(company);
           companyData = company;
           console.log('Set company in context:', company);
@@ -477,17 +509,17 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
       // Save session to localStorage for persistence
       const sessionData = {
-        user: authData.user,
+        user: mockUser,
         userRole: userRoleData,
         company: companyData,
-        session: authData.session,
+        session: null, // No Supabase session for custom auth
         timestamp: Date.now()
       };
       
       localStorage.setItem('custom_auth_session', JSON.stringify(sessionData));
-      console.log('Saved custom session to localStorage');
+      console.log('Saved custom admin session to localStorage');
 
-      return authData.user;
+      return mockUser;
     } catch (error) {
       console.error('Error signing in admin:', error);
       // Clear any existing Supabase Auth session on failure
@@ -500,38 +532,36 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     try {
       console.log('Attempting employee login for:', email);
       
-      // Check if employee exists in employees table with correct credentials
-      const { data: employee, error: employeeError } = await supabase
-        .from('employees')
-        .select('*')
-        .eq('email', email)
-        .eq('password', password)
-        .eq('is_active', true)
-        .single();
+      // Use RPC function to authenticate employee (bypasses RLS)
+      const { data: employees, error: employeeError } = await supabase
+        .rpc('authenticate_employee', {
+          p_email: email,
+          p_password: password
+        });
 
-      if (employeeError || !employee) {
+      if (employeeError || !employees || employees.length === 0) {
         console.error('Employee not found or invalid credentials:', employeeError);
         throw new Error('Invalid employee credentials');
       }
 
+      const employee = employees[0];
+
       console.log('Employee found:', employee);
       
-      // Fetch user role - specifically look for employee role FIRST
-      const { data: userRoleData, error: roleError } = await supabase
-        .from('user_roles')
-        .select('*')
-        .eq('user_id', employee.user_id)
-        .eq('role', 'employee')
-        .eq('is_active', true)
-        .single();
-
-      console.log('User role query result:', userRoleData);
-      console.log('User role query error:', roleError);
-
-      if (!userRoleData) {
+      // Check if role data is included (new function returns role info)
+      if (!employee.role || employee.role !== 'employee') {
         console.log('No employee role found for user:', employee.user_id);
         throw new Error('Employee role not found for this user');
       }
+
+      // Create userRoleData object from the returned data
+      const userRoleData = {
+        id: employee.role_id,
+        user_id: employee.user_id,
+        role: employee.role,
+        company_id: employee.role_company_id,
+        is_active: true
+      };
 
       console.log('Set user role in context:', userRoleData);
       console.log('User role data role field:', userRoleData.role);
@@ -572,19 +602,19 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       setUserRole(userRoleData);
       console.log('Set user in context:', mockUser);
 
-      // Fetch company data
+      // Fetch company data using RPC function (bypasses RLS)
       let companyData = null;
       if (userRoleData?.company_id) {
-        const { data: company, error: companyError } = await supabase
-          .from('companies')
-          .select('*')
-          .eq('id', userRoleData.company_id)
-          .single();
+        const { data: companies, error: companyError } = await supabase
+          .rpc('get_company_by_id', {
+            p_company_id: userRoleData.company_id
+          });
 
-        console.log('Company query result:', company);
+        console.log('Company query result:', companies);
         console.log('Company query error:', companyError);
 
-        if (company) {
+        if (companies && companies.length > 0) {
+          const company = companies[0];
           setCompany(company);
           companyData = company;
           console.log('Set company in context:', company);

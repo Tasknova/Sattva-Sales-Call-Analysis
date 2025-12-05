@@ -693,7 +693,8 @@ export default function ManagerDashboard() {
         description: 'Employee deleted successfully!',
       });
 
-      fetchData();
+      // Optimized: Remove deleted employee from state instead of refetching everything
+      setEmployees(prev => prev.filter(e => e.user_id !== employeeId));
     } catch (error: any) {
       console.error('Error deleting employee:', error);
       toast({
