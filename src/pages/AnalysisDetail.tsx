@@ -110,9 +110,9 @@ export default function AnalysisDetail() {
       <header className="border-b bg-card px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" onClick={() => navigate('/?tab=recordings')}>
+            <Button variant="ghost" onClick={() => navigate('/?tab=analysis')}>
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Recordings
+              Back to Analysis
             </Button>
             <img 
               src="/logo.png" 
@@ -258,7 +258,8 @@ export default function AnalysisDetail() {
                   <div className="text-3xl font-bold text-orange-500">
                     {(() => {
                       const objRaised = analysis.objections_detected || analysis.objections_raised || '';
-                      const count = objRaised.split('\n').filter(line => line.trim()).length;
+                      if (typeof objRaised === 'number') return objRaised;
+                      const count = String(objRaised).split('\n').filter(line => line.trim()).length;
                       return count > 0 ? count : 0;
                     })()}
                   </div>
@@ -272,7 +273,8 @@ export default function AnalysisDetail() {
                   <div className="text-3xl font-bold text-green-500">
                     {(() => {
                       const objHandled = analysis.objections_handled || analysis.objections_handeled || '';
-                      const count = objHandled.split('\n').filter(line => line.trim()).length;
+                      if (typeof objHandled === 'number') return objHandled;
+                      const count = String(objHandled).split('\n').filter(line => line.trim()).length;
                       return count > 0 ? count : 0;
                     })()}
                   </div>
@@ -348,14 +350,9 @@ export default function AnalysisDetail() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-start gap-3">
-                    <Badge variant="outline" className="mt-0.5">
-                      {analysis.outcome || 'Not Specified'}
-                    </Badge>
-                    <p className="text-sm text-muted-foreground leading-relaxed flex-1">
-                      {analysis.outcome ? `This call concluded with a ${analysis.outcome.toLowerCase()} outcome.` : 'No outcome information available.'}
-                    </p>
-                  </div>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {analysis.outcome || 'No outcome information available.'}
+                  </p>
                 </CardContent>
               </Card>
             </div>
@@ -412,7 +409,10 @@ export default function AnalysisDetail() {
                   <div className="space-y-2">
                     {(() => {
                       const objections = analysis.objections_detected || analysis.objections_raised || '';
-                      const list = objections.split('\n').filter(line => line.trim());
+                      if (typeof objections === 'number') {
+                        return <p className="text-sm text-muted-foreground">{objections} objection(s) detected.</p>;
+                      }
+                      const list = String(objections).split('\n').filter(line => line.trim());
                       return list.length > 0 ? (
                         <ul className="space-y-2">
                           {list.map((obj, idx) => (
@@ -442,8 +442,18 @@ export default function AnalysisDetail() {
                 <CardContent>
                   <div className="space-y-2">
                     {(() => {
-                      const handled = analysis.objections_handled || analysis.objections_handeled || '';
-                      const list = handled.split('\n').filter(line => line.trim());
+                      // Check both spellings: objections_handeled (with typo) and objections_handled (correct)
+                      const handled = analysis.objections_handeled || analysis.objections_handled || '';
+                      
+                      if (!handled || handled === '' || handled === '0') {
+                        return <p className="text-sm text-muted-foreground">No objections were successfully handled.</p>;
+                      }
+                      
+                      if (typeof handled === 'number') {
+                        return <p className="text-sm text-muted-foreground">{handled} objection(s) handled.</p>;
+                      }
+                      
+                      const list = String(handled).split('\n').filter(line => line.trim());
                       return list.length > 0 ? (
                         <ul className="space-y-2">
                           {list.map((obj, idx) => (

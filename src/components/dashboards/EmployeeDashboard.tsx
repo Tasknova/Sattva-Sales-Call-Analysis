@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -107,7 +109,9 @@ import {
   Clock,
   Users,
   Building,
-  BarChart
+  BarChart,
+  Headphones,
+  Link as LinkIcon
 } from "lucide-react";
 
 const normalizePhoneNumber = (num: string | null | undefined) => {
@@ -157,28 +161,41 @@ interface Call {
 
 interface Analysis {
   id: string;
-  recording_id: string;
-  call_id?: string;
+  recording_id?: string;
+  user_id: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
-  sentiment_score: number;
-  engagement_score: number;
-  confidence_score_executive: number;
-  confidence_score_person: number;
-  detailed_call_analysis: any;
   created_at: string;
+  call_quality_score?: number;
+  script_adherence?: number;
+  compilience_expections_score?: number;
+  closure_probability?: number;
+  candidate_acceptance_risk?: string;
+  follow_up_details?: string;
   recordings?: {
     id: string;
     file_name: string;
-    stored_file_url: string;
+    recording_url: string;
+    status: string;
+    call_history_id?: string;
   };
 }
 
 import EmployeeAnalysisPage from "@/pages/EmployeeAnalysisPage";
 export default function EmployeeDashboard() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const { user, userRole, company, signOut } = useAuth();
   const { toast } = useToast();
+  
+  // Session timeout: 60 minutes for employee
+  useSessionTimeout({ timeoutMinutes: 60, warningMinutes: 5 });
+  
+  // Read tab from URL query parameter
+  const searchParams = new URLSearchParams(location.search);
+  const tabFromUrl = searchParams.get('tab') || 'overview';
+  
   const [loading, setLoading] = useState(true);
-  const [selectedTab, setSelectedTab] = useState("overview");
+  const [selectedTab, setSelectedTab] = useState(tabFromUrl);
   // router navigation is not required here (uses react-router elsewhere)
   const [allLeads, setAllLeads] = useState<Lead[]>([]);
   const [followUpLeads, setFollowUpLeads] = useState<Lead[]>([]);
@@ -251,30 +268,42 @@ export default function EmployeeDashboard() {
   const [isDialerModalOpen, setIsDialerModalOpen] = useState(false);
   const [processingCalls, setProcessingCalls] = useState<Set<string>>(new Set());
 
+  // Update selected tab when URL changes
+  useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    const tabFromUrl = searchParams.get('tab');
+    if (tabFromUrl) {
+      setSelectedTab(tabFromUrl);
+    }
+  }, [location.search]);
+
   useEffect(() => {
     if (userRole && company) {
       fetchData();
       fetchCompanySettings();
-      // Set up automatic refresh every 10 seconds to check for analysis updates
+      // OPTIMIZATION: Increase refresh interval to 30 seconds instead of 10
       const dataInterval = setInterval(() => {
         fetchData(false); // Don't show loading spinner on automatic refresh
-      }, 10000); // Refresh data every 10 seconds
-      // Realtime subscription: refetch when leads change so assignments appear immediately
+      }, 30000); // Refresh data every 30 seconds
+      // OPTIMIZATION: Debounce realtime updates to prevent excessive refetches
       let leadsSubscription: any = null;
+      let debounceTimer: any = null;
+      const debouncedFetch = () => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => fetchData(false), 2000); // Wait 2s before refetch
+      };
       try {
         // Use Supabase Realtime to listen for changes on the leads table for this company
         leadsSubscription = supabase
           .channel('public:leads')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'leads', filter: `company_id=eq.${userRole.company_id}` }, () => {
-            fetchData(false);
-          })
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'leads', filter: `company_id=eq.${userRole.company_id}` }, debouncedFetch)
           .subscribe();
       } catch (err) {
         // Fallback for older supabase clients
         try {
           const sub = supabase
             .from(`leads:company_id=eq.${userRole.company_id}`)
-            .on('*', () => fetchData(false))
+            .on('*', debouncedFetch)
             .subscribe();
           leadsSubscription = sub;
         } catch (e) {
@@ -289,6 +318,7 @@ export default function EmployeeDashboard() {
       return () => {
         clearInterval(dataInterval);
         clearInterval(timeInterval);
+        if (debounceTimer) clearTimeout(debounceTimer);
         try {
           if (leadsSubscription) {
             // Unsubscribe depending on API
@@ -316,13 +346,23 @@ export default function EmployeeDashboard() {
       // Declare leadsDataArray at function scope so it's accessible in calls processing
       let leadsDataArray: any[] = [];
 
-      // STEP 1: First fetch all calls made by this employee from call_history table
-      // Note: employee_id in call_history references employees.user_id (not employees.id)
-      const { data: callsData, error: callsError } = await supabase
-        .from('call_history')
-        .select('*')
-        .eq('employee_id', userRole.user_id)
-        .order('created_at', { ascending: false });
+      // OPTIMIZATION: Fetch employee data and calls in parallel
+      const [callsResult, employeeResult] = await Promise.all([
+        supabase
+          .from('call_history')
+          .select('*')
+          .eq('employee_id', userRole.user_id)
+          .order('created_at', { ascending: false })
+          .limit(500), // Limit to recent 500 calls for performance
+        supabase
+          .from('employees')
+          .select('id, company_id')
+          .eq('user_id', userRole.user_id)
+          .maybeSingle()
+      ]);
+
+      const { data: callsData, error: callsError } = callsResult;
+      const { data: employeeRecord } = employeeResult;
 
       if (callsError) {
         console.error('Calls error:', callsError);
@@ -333,61 +373,41 @@ export default function EmployeeDashboard() {
         return;
       }
 
-      console.log('EmployeeDashboard - Fetched calls:', callsData?.length || 0, callsData);
+      console.log('EmployeeDashboard - Fetched calls:', callsData?.length || 0);
 
       // STEP 2: Get all unique lead IDs from the calls
       const calledLeadIds = [...new Set(callsData?.map(c => c.lead_id).filter(Boolean) || [])];
       console.log('EmployeeDashboard - Unique leads called:', calledLeadIds.length);
 
-      // STEP 3: Fetch ALL leads that have been called by this employee (not just assigned)
-      // Also include leads assigned to this employee so assigned leads show up immediately
-      // Determine employee.table id for assigned_to comparisons
-      const { data: employeeRecord } = await supabase
-        .from('employees')
-        .select('id')
-        .eq('user_id', userRole.user_id)
-        .maybeSingle();
+      // OPTIMIZATION: Combine lead queries into one efficient query
+      const leadQueries: Array<Promise<any>> = [];
 
-      // Build arrays of promises to fetch leads
-      const leadsFetches: Array<Promise<any>> = [];
-
-      if (calledLeadIds.length > 0) {
-        leadsFetches.push(
-          supabase.from('leads').select('*').in('id', calledLeadIds)
-        );
-      }
-
-      // Fetch leads assigned to this user (assigned_to could be either user_id or employees.id)
-      if (userRole?.user_id) {
-        leadsFetches.push(
-          supabase.from('leads').select('*').eq('assigned_to', userRole.user_id)
-        );
-      }
-
-      if (employeeRecord?.id) {
-        leadsFetches.push(
-          supabase.from('leads').select('*').eq('assigned_to', employeeRecord.id)
-        );
-      }
-
-      // Execute all lead fetches and merge unique results
-      if (leadsFetches.length > 0) {
-        const fetched = await Promise.all(leadsFetches);
-        const combinedLeads: any[] = [];
-        for (const res of fetched) {
-          if (res && res.data) {
-            combinedLeads.push(...(res.data || []));
-          }
-          if (res && res.error) {
-            console.error('Leads fetch error:', res.error);
-          }
+      if (calledLeadIds.length > 0 || userRole?.user_id || employeeRecord?.id) {
+        // Build OR query to fetch all relevant leads in one go
+        let leadsQuery = supabase.from('leads').select('*');
+        
+        if (calledLeadIds.length > 0) {
+          leadsQuery = leadsQuery.or(`id.in.(${calledLeadIds.join(',')}),assigned_to.eq.${userRole.user_id}${employeeRecord?.id ? `,assigned_to.eq.${employeeRecord.id}` : ''}`);
+        } else if (userRole?.user_id || employeeRecord?.id) {
+          leadsQuery = leadsQuery.or(`assigned_to.eq.${userRole.user_id}${employeeRecord?.id ? `,assigned_to.eq.${employeeRecord.id}` : ''}`);
         }
+        
+        leadQueries.push(leadsQuery);
+      }
 
-        // Deduplicate leads by id
-        const unique = Object.values(Object.fromEntries(combinedLeads.map((l: any) => [l.id, l])));
-        leadsDataArray = unique;
-
-        console.log('EmployeeDashboard - Fetched leads (merged from calls & assignments):', leadsDataArray.length, leadsDataArray);
+      // Execute lead fetch
+      if (leadQueries.length > 0) {
+        const [leadsResult] = await Promise.all(leadQueries);
+        
+        if (leadsResult?.error) {
+          console.error('Leads fetch error:', leadsResult.error);
+          leadsDataArray = [];
+        } else if (leadsResult?.data) {
+          // Deduplicate by id
+          const unique = Object.values(Object.fromEntries(leadsResult.data.map((l: any) => [l.id, l])));
+          leadsDataArray = unique;
+          console.log('EmployeeDashboard - Fetched leads:', leadsDataArray.length);
+        }
 
         // Fetch lead groups for these leads
         const leadGroupIds = [...new Set(leadsDataArray.map(lead => lead.group_id).filter(Boolean))];
@@ -416,19 +436,43 @@ export default function EmployeeDashboard() {
       let leadsMap = new Map();
       leadsDataArray.forEach(lead => leadsMap.set(lead.id, lead));
 
-      // STEP 5: Fetch call outcomes separately (for backward compatibility with old data)
-      // Note: call_outcomes.employee_id references employees.id, but we have userRole.user_id (employees.user_id)
-      // So we need to first get the employee.id
-      const { data: employeeData } = await supabase
-        .from('employees')
-        .select('id')
-        .eq('user_id', userRole.user_id)
-        .single();
+      // OPTIMIZATION: Use employeeRecord from earlier parallel fetch
+      const employeeData = employeeRecord;
 
-      const { data: outcomesData, error: outcomesError } = await supabase
-        .from('call_outcomes')
-        .select('lead_id, outcome')
-        .eq('employee_id', employeeData?.id || '');
+      // OPTIMIZATION: Fetch outcomes and analyses in parallel
+      const [outcomesResult, analysesResult] = await Promise.all([
+        supabase
+          .from('call_outcomes')
+          .select('lead_id, outcome')
+          .eq('employee_id', employeeData?.id || ''),
+        supabase
+          .from('analyses')
+          .select(`
+            id,
+            user_id,
+            status,
+            created_at,
+            call_quality_score,
+            script_adherence,
+            compilience_expections_score,
+            closure_probability,
+            candidate_acceptance_risk,
+            follow_up_details,
+            recordings (
+              id,
+              file_name,
+              recording_url,
+              status,
+              call_history_id
+            )
+          `)
+          .eq('user_id', userRole.user_id)
+          .order('created_at', { ascending: false })
+          .limit(200) // Limit to recent 200 analyses
+      ]);
+
+      const { data: outcomesData } = outcomesResult;
+      const { data: analysesData, error: analysesError } = analysesResult;
 
       // STEP 6: Merge call outcomes and leads with call history
       const mergedCalls = callsData?.map(call => {
@@ -496,24 +540,8 @@ export default function EmployeeDashboard() {
         setCompletedLeads(completedCallsArray);
       }
 
-      // Fetch analyses for recordings made by this employee
-      const { data: analysesData, error: analysesError } = await supabase
-        .from('analyses')
-        .select(`
-          *,
-          recordings (
-            id,
-            file_name,
-            recording_url,
-            status,
-            call_history_id
-          )
-        `)
-        .eq('user_id', userRole.user_id);
-
-      console.log('EmployeeDashboard - Fetching analyses for user_id:', userRole.user_id);
-      console.log('EmployeeDashboard - Analyses data:', analysesData);
-      console.log('EmployeeDashboard - Analyses error:', analysesError);
+      // Analyses already fetched in parallel above
+      console.log('EmployeeDashboard - Analyses data:', analysesData?.length || 0);
 
       if (analysesError) {
         console.error('Analyses error:', analysesError);
@@ -536,59 +564,89 @@ export default function EmployeeDashboard() {
         }
       }
 
-      // Create/update daily productivity record with login time from first call of today
+      // Create/update daily productivity record with login time from first call and logout time from last call
       if (employeeData?.id && mergedCalls && mergedCalls.length > 0) {
         // Get today's date in local timezone
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const todayStr = today.toISOString().split('T')[0];
         
-        // Find calls made today
-        const todaysCalls = mergedCalls.filter(call => {
-          if (!call.call_date) return false;
-          const callDate = new Date(call.call_date);
-          const callDateStr = new Date(callDate.getTime() - callDate.getTimezoneOffset() * 60000)
-            .toISOString()
-            .split('T')[0];
-          return callDateStr === todayStr;
-        });
+        // Get yesterday's date for historical updates
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
         
-        // If there are calls today, get the first call time
-        if (todaysCalls.length > 0) {
-          // Sort by call_date to find first call
-          todaysCalls.sort((a, b) => {
-            const dateA = new Date(a.call_date!).getTime();
-            const dateB = new Date(b.call_date!).getTime();
-            return dateA - dateB;
+        // Process both today and yesterday
+        const datesToProcess = [
+          { date: todayStr, dateObj: today },
+          { date: yesterdayStr, dateObj: yesterday }
+        ];
+        
+        for (const { date: dateStr, dateObj } of datesToProcess) {
+          // Find calls made on this date
+          const dateCalls = mergedCalls.filter(call => {
+            if (!call.call_date) return false;
+            const callDate = new Date(call.call_date);
+            const callDateStr = new Date(callDate.getTime() - callDate.getTimezoneOffset() * 60000)
+              .toISOString()
+              .split('T')[0];
+            return callDateStr === dateStr;
           });
           
-          const firstCall = todaysCalls[0];
-          const firstCallTime = new Date(firstCall.call_date!);
-          
-          // Extract time in HH:MM:SS format
-          const hours = String(firstCallTime.getHours()).padStart(2, '0');
-          const minutes = String(firstCallTime.getMinutes()).padStart(2, '0');
-          const seconds = String(firstCallTime.getSeconds()).padStart(2, '0');
-          const loginTime = `${hours}:${minutes}:${seconds}`;
-          
-          // Check if productivity record exists for today
-          const { data: existingRecord } = await supabase
-            .from('employee_daily_productivity')
-            .select('login_time')
-            .eq('employee_id', employeeData.id)
-            .eq('date', todayStr)
-            .single();
-          
-          // Only create/update if record doesn't exist or login_time is null
-          if (!existingRecord || !existingRecord.login_time) {
+          // If there are calls on this date
+          if (dateCalls.length > 0) {
+            // Sort by call_date to find first and last call
+            dateCalls.sort((a, b) => {
+              const dateA = new Date(a.call_date!).getTime();
+              const dateB = new Date(b.call_date!).getTime();
+              return dateA - dateB;
+            });
+            
+            const firstCall = dateCalls[0];
+            const lastCall = dateCalls[dateCalls.length - 1];
+            
+            const firstCallTime = new Date(firstCall.call_date!);
+            const lastCallTime = new Date(lastCall.call_date!);
+            
+            // Extract login time in HH:MM:SS format
+            const loginHours = String(firstCallTime.getHours()).padStart(2, '0');
+            const loginMinutes = String(firstCallTime.getMinutes()).padStart(2, '0');
+            const loginSeconds = String(firstCallTime.getSeconds()).padStart(2, '0');
+            const loginTime = `${loginHours}:${loginMinutes}:${loginSeconds}`;
+            
+            // Extract logout time in HH:MM:SS format
+            const logoutHours = String(lastCallTime.getHours()).padStart(2, '0');
+            const logoutMinutes = String(lastCallTime.getMinutes()).padStart(2, '0');
+            const logoutSeconds = String(lastCallTime.getSeconds()).padStart(2, '0');
+            const logoutTime = `${logoutHours}:${logoutMinutes}:${logoutSeconds}`;
+            
+            // Check if productivity record exists for this date
+            const { data: existingRecord } = await supabase
+              .from('employee_daily_productivity')
+              .select('login_time, logout_time')
+              .eq('employee_id', employeeData.id)
+              .eq('date', dateStr)
+              .single();
+            
+            // Prepare update data
+            const updateData: any = {
+              employee_id: employeeData.id,
+              company_id: employeeData.company_id,
+              date: dateStr,
+              updated_at: new Date().toISOString()
+            };
+            
+            // Only update login_time if it doesn't exist
+            if (!existingRecord || !existingRecord.login_time) {
+              updateData.login_time = loginTime;
+            }
+            
+            // Always update logout_time with the latest last call time
+            updateData.logout_time = logoutTime;
+            
             const { error: upsertError } = await supabase
               .from('employee_daily_productivity')
-              .upsert({
-                employee_id: employeeData.id,
-                date: todayStr,
-                login_time: loginTime,
-                updated_at: new Date().toISOString()
-              }, {
+              .upsert(updateData, {
                 onConflict: 'employee_id,date',
                 ignoreDuplicates: false
               });
@@ -597,35 +655,38 @@ export default function EmployeeDashboard() {
               console.error('Error creating/updating daily productivity record:', upsertError);
             } else {
               console.log('EmployeeDashboard - Created/updated daily productivity record:', {
-                date: todayStr,
-                login_time: loginTime,
-                first_call_date: firstCall.call_date
+                date: dateStr,
+                login_time: updateData.login_time || '(existing)',
+                logout_time: logoutTime,
+                first_call_date: firstCall.call_date,
+                last_call_date: lastCall.call_date
               });
             }
           }
         }
       }
 
-      // Fetch daily productivity data for current month
+      // OPTIMIZATION: Fetch daily productivity in background without blocking
       if (employeeData?.id) {
         const startOfMonth = new Date();
         startOfMonth.setDate(1);
         startOfMonth.setHours(0, 0, 0, 0);
         
-        const { data: productivityData, error: productivityError } = await supabase
+        // Don't await - fetch in background
+        supabase
           .from('employee_daily_productivity')
           .select('*')
           .eq('employee_id', employeeData.id)
           .gte('date', startOfMonth.toISOString().split('T')[0])
-          .order('date', { ascending: true });
-
-        if (productivityError) {
-          console.error('Daily productivity error:', productivityError);
-          setDailyProductivity([]);
-        } else {
-          setDailyProductivity(productivityData || []);
-          console.log('EmployeeDashboard - Daily productivity data:', productivityData);
-        }
+          .order('date', { ascending: true })
+          .then(({ data: productivityData, error: productivityError }) => {
+            if (productivityError) {
+              console.error('Daily productivity error:', productivityError);
+              setDailyProductivity([]);
+            } else {
+              setDailyProductivity(productivityData || []);
+            }
+          });
       }
 
     } catch (error) {
@@ -1048,6 +1109,11 @@ Please provide insights that are specific, actionable, and tailored to these met
         variant: 'destructive',
       });
     }
+  };
+
+  const handleViewCallDetails = (call: Call) => {
+    setSelectedCallDetails(call);
+    setIsCallDetailsModalOpen(true);
   };
 
   const handleDeleteCall = async (callId: string) => {
@@ -1980,6 +2046,9 @@ Please provide insights that are specific, actionable, and tailored to these met
     const now = new Date();
     
     return analyses.filter(analysis => {
+      // Only include completed analyses
+      if (analysis.status !== 'completed') return false;
+      
       const createdAt = analysis.created_at;
       if (!createdAt) return false;
       
@@ -1987,15 +2056,12 @@ Please provide insights that are specific, actionable, and tailored to these met
       const analysisTime = date.getTime();
       
       if (dateFilter === 'today') {
-        // Show previous business day (Friday if Monday, otherwise yesterday)
-        const dayOfWeek = now.getDay();
-        const daysToGoBack = dayOfWeek === 1 ? 3 : (dayOfWeek === 0 ? 2 : 1);
-        const reportDate = new Date(now);
-        reportDate.setDate(now.getDate() - daysToGoBack);
-        reportDate.setHours(0, 0, 0, 0);
-        const reportDateEnd = new Date(reportDate);
-        reportDateEnd.setHours(23, 59, 59, 999);
-        return analysisTime >= reportDate.getTime() && analysisTime <= reportDateEnd.getTime();
+        // Show today's data
+        const today = new Date(now);
+        today.setHours(0, 0, 0, 0);
+        const todayEnd = new Date(today);
+        todayEnd.setHours(23, 59, 59, 999);
+        return analysisTime >= today.getTime() && analysisTime <= todayEnd.getTime();
       } else if (dateFilter === 'yesterday') {
         const yesterday = new Date(now);
         yesterday.setDate(now.getDate() - 1);
@@ -2084,6 +2150,32 @@ Please provide insights that are specific, actionable, and tailored to these met
     });
   }, [dailyProductivity, dateFilter, customDateRange.startDate, customDateRange.endDate]);
 
+  // OPTIMIZATION: Pre-calculate analysis statistics to avoid repeated filtering in render
+  const analysisStats = useMemo(() => {
+    console.log('Total dateFilteredAnalyses:', dateFilteredAnalyses.length);
+    console.log('Sample analysis:', dateFilteredAnalyses[0]);
+    
+    const completedQualityAnalyses = dateFilteredAnalyses.filter(a => a.call_quality_score !== null && a.call_quality_score !== undefined);
+    const completedScriptAnalyses = dateFilteredAnalyses.filter(a => a.script_adherence !== null && a.script_adherence !== undefined);
+    const completedComplianceAnalyses = dateFilteredAnalyses.filter(a => a.compilience_expections_score !== null && a.compilience_expections_score !== undefined);
+    
+    console.log('Completed quality analyses:', completedQualityAnalyses.length);
+    console.log('Completed script analyses:', completedScriptAnalyses.length);
+    console.log('Completed compliance analyses:', completedComplianceAnalyses.length);
+    
+    return {
+      avgCallQuality: completedQualityAnalyses.length > 0 
+        ? Math.round(completedQualityAnalyses.reduce((sum, a) => sum + (a.call_quality_score || 0), 0) / completedQualityAnalyses.length)
+        : 0,
+      avgScriptAdherence: completedScriptAnalyses.length > 0
+        ? Math.round(completedScriptAnalyses.reduce((sum, a) => sum + (a.script_adherence || 0), 0) / completedScriptAnalyses.length)
+        : 0,
+      avgCompliance: completedComplianceAnalyses.length > 0
+        ? Math.round(completedComplianceAnalyses.reduce((sum, a) => sum + (a.compilience_expections_score || 0), 0) / completedComplianceAnalyses.length)
+        : 0
+    };
+  }, [dateFilteredAnalyses]);
+
   const applyCustomRange = () => {
     if (customDateRange.startDate && customDateRange.endDate) {
       setShowCustomDatePicker(false);
@@ -2158,23 +2250,21 @@ Please provide insights that are specific, actionable, and tailored to these met
             <Button 
               variant={selectedTab === "overview" ? "accent" : "ghost"} 
               className="w-full justify-start"
-              onClick={() => setSelectedTab("overview")}
+              onClick={() => {
+                setSelectedTab("overview");
+                navigate('?tab=overview');
+              }}
             >
               <TrendingUp className="h-4 w-4" />
               Overview
             </Button>
             <Button 
-              variant={selectedTab === "productivity" ? "accent" : "ghost"} 
-              className="w-full justify-start"
-              onClick={() => setSelectedTab("productivity")}
-            >
-              <BarChart className="h-4 w-4" />
-              Productivity Dashboard
-            </Button>
-            <Button 
               variant={selectedTab === "leads" ? "accent" : "ghost"} 
               className="w-full justify-start"
-              onClick={() => setSelectedTab("leads")}
+              onClick={() => {
+                setSelectedTab("leads");
+                navigate('?tab=leads');
+              }}
             >
               <Phone className="h-4 w-4" />
               My Leads
@@ -2182,7 +2272,10 @@ Please provide insights that are specific, actionable, and tailored to these met
             <Button 
               variant={selectedTab === "calls" ? "accent" : "ghost"} 
               className="w-full justify-start"
-              onClick={() => setSelectedTab("calls")}
+              onClick={() => {
+                setSelectedTab("calls");
+                navigate('?tab=calls');
+              }}
             >
               <PhoneCall className="h-4 w-4" />
               Call History
@@ -2190,7 +2283,10 @@ Please provide insights that are specific, actionable, and tailored to these met
             <Button 
               variant={selectedTab === "reports" ? "accent" : "ghost"} 
               className="w-full justify-start"
-              onClick={() => setSelectedTab("reports")}
+              onClick={() => {
+                setSelectedTab("reports");
+                navigate('?tab=reports');
+              }}
             >
               <FileText className="h-4 w-4" />
               Reports
@@ -2198,7 +2294,10 @@ Please provide insights that are specific, actionable, and tailored to these met
             <Button 
               variant={selectedTab === "analysis" ? "accent" : "ghost"} 
               className="w-full justify-start"
-              onClick={() => setSelectedTab("analysis")}
+              onClick={() => {
+                setSelectedTab("analysis");
+                navigate('?tab=analysis');
+              }}
             >
               <BarChart3 className="h-4 w-4" />
               Analysis
@@ -2206,7 +2305,10 @@ Please provide insights that are specific, actionable, and tailored to these met
             <Button 
               variant={selectedTab === "profile" ? "accent" : "ghost"} 
               className="w-full justify-start"
-              onClick={() => setSelectedTab("profile")}
+              onClick={() => {
+                setSelectedTab("profile");
+                navigate('?tab=profile');
+              }}
             >
               <User className="h-4 w-4" />
               Profile
@@ -2330,25 +2432,13 @@ Please provide insights that are specific, actionable, and tailored to these met
                             strokeWidth="8"
                             fill="none"
                             strokeDasharray={`${2 * Math.PI * 40}`}
-                            strokeDashoffset={`${2 * Math.PI * 40 * (1 - (
-                              (() => {
-                                const completedAnalyses = dateFilteredAnalyses.filter(a => a.call_quality_score && a.call_quality_score > 0);
-                                if (completedAnalyses.length === 0) return 0;
-                                const avgScore = completedAnalyses.reduce((sum, a) => sum + (a.call_quality_score || 0), 0) / completedAnalyses.length;
-                                return (avgScore / 100);
-                              })()
-                            ))}`}
+                            strokeDashoffset={`${2 * Math.PI * 40 * (1 - (analysisStats.avgCallQuality / 100))}`}
                             strokeLinecap="round"
                           />
                         </svg>
                         <div className="absolute inset-0 flex items-center justify-center">
                           <span className="text-2xl font-bold text-green-600">
-                            {(() => {
-                              const completedAnalyses = dateFilteredAnalyses.filter(a => a.call_quality_score && a.call_quality_score > 0);
-                              if (completedAnalyses.length === 0) return '0%';
-                              const avgScore = completedAnalyses.reduce((sum, a) => sum + (a.call_quality_score || 0), 0) / completedAnalyses.length;
-                              return Math.round(avgScore) + '%';
-                            })()}
+                            {analysisStats.avgCallQuality}%
                           </span>
                         </div>
                       </div>
@@ -2379,25 +2469,13 @@ Please provide insights that are specific, actionable, and tailored to these met
                             strokeWidth="8"
                             fill="none"
                             strokeDasharray={`${2 * Math.PI * 40}`}
-                            strokeDashoffset={`${2 * Math.PI * 40 * (1 - (
-                              (() => {
-                                const completedAnalyses = dateFilteredAnalyses.filter(a => a.script_adherence && a.script_adherence > 0);
-                                if (completedAnalyses.length === 0) return 0;
-                                const avgScore = completedAnalyses.reduce((sum, a) => sum + (a.script_adherence || 0), 0) / completedAnalyses.length;
-                                return (avgScore / 100);
-                              })()
-                            ))}`}
+                            strokeDashoffset={`${2 * Math.PI * 40 * (1 - (analysisStats.avgScriptAdherence / 100))}`}
                             strokeLinecap="round"
                           />
                         </svg>
                         <div className="absolute inset-0 flex items-center justify-center">
                           <span className="text-2xl font-bold text-green-600">
-                            {(() => {
-                              const completedAnalyses = dateFilteredAnalyses.filter(a => a.script_adherence && a.script_adherence > 0);
-                              if (completedAnalyses.length === 0) return '0%';
-                              const avgScore = completedAnalyses.reduce((sum, a) => sum + (a.script_adherence || 0), 0) / completedAnalyses.length;
-                              return Math.round(avgScore) + '%';
-                            })()}
+                            {analysisStats.avgScriptAdherence}%
                           </span>
                         </div>
                       </div>
@@ -2428,25 +2506,13 @@ Please provide insights that are specific, actionable, and tailored to these met
                             strokeWidth="8"
                             fill="none"
                             strokeDasharray={`${2 * Math.PI * 40}`}
-                            strokeDashoffset={`${2 * Math.PI * 40 * (1 - (
-                              (() => {
-                                const completedAnalyses = dateFilteredAnalyses.filter(a => a.compilience_expections_score !== null && a.compilience_expections_score !== undefined);
-                                if (completedAnalyses.length === 0) return 0;
-                                const avgScore = completedAnalyses.reduce((sum, a) => sum + (a.compilience_expections_score || 0), 0) / completedAnalyses.length;
-                                return (avgScore / 100);
-                              })()
-                            ))}`}
+                            strokeDashoffset={`${2 * Math.PI * 40 * (1 - (analysisStats.avgCompliance / 100))}`}
                             strokeLinecap="round"
                           />
                         </svg>
                         <div className="absolute inset-0 flex items-center justify-center">
                           <span className="text-2xl font-bold text-green-600">
-                            {(() => {
-                              const completedAnalyses = dateFilteredAnalyses.filter(a => a.compilience_expections_score !== null && a.compilience_expections_score !== undefined);
-                              if (completedAnalyses.length === 0) return '0%';
-                              const avgScore = completedAnalyses.reduce((sum, a) => sum + (a.compilience_expections_score || 0), 0) / completedAnalyses.length;
-                              return Math.round(avgScore) + '%';
-                            })()}
+                            {analysisStats.avgCompliance}%
                           </span>
                         </div>
                       </div>
@@ -2454,11 +2520,11 @@ Please provide insights that are specific, actionable, and tailored to these met
                   </CardContent>
                 </Card>
 
-                {/* Login Time - Shows actual login for today, average for other periods */}
+                {/* Login Time - Shows actual login for today and yesterday, average for other periods */}
                 <Card className="bg-white shadow-sm hover:shadow-md transition-shadow">
                   <CardContent className="pt-6 pb-6">
                     <p className="text-sm font-medium text-gray-600 mb-3">
-                      {dateFilter === 'today' ? 'Login Time' : 'Avg Login Time'}
+                      {dateFilter === 'today' || dateFilter === 'yesterday' ? 'Login Time' : 'Avg Login Time'}
                     </p>
                     <div className="flex flex-col items-center">
                       <p className="text-4xl font-bold text-gray-900">
@@ -2467,8 +2533,8 @@ Please provide insights that are specific, actionable, and tailored to these met
                           const loginTimes = dateFilteredDailyProductivity.filter(dp => dp.login_time);
                           if (loginTimes.length === 0) return '--:--';
                           
-                          // For today, show the actual login time
-                          if (dateFilter === 'today') {
+                          // For today or yesterday, show the actual login time
+                          if (dateFilter === 'today' || dateFilter === 'yesterday') {
                             return loginTimes[0].login_time.substring(0, 5); // Format HH:MM
                           }
                           
@@ -2487,11 +2553,11 @@ Please provide insights that are specific, actionable, and tailored to these met
                   </CardContent>
                 </Card>
 
-                {/* Logout Time - Shows expected logout for today, average for other periods */}
+                {/* Logout Time - Shows expected logout for today, actual for yesterday, average for other periods */}
                 <Card className="bg-white shadow-sm hover:shadow-md transition-shadow">
                   <CardContent className="pt-6 pb-6">
                     <p className="text-sm font-medium text-gray-600 mb-3">
-                      {dateFilter === 'today' ? 'Expected Logout Time' : 'Avg Logout Time'}
+                      {dateFilter === 'today' ? 'Expected Logout Time' : dateFilter === 'yesterday' ? 'Logout Time' : 'Avg Logout Time'}
                     </p>
                     <div className="flex flex-col items-center">
                       <p className="text-4xl font-bold text-gray-900">
@@ -2509,6 +2575,13 @@ Please provide insights that are specific, actionable, and tailored to these met
                             const logoutHours = Math.floor(expectedLogoutMinutes / 60);
                             const logoutMins = expectedLogoutMinutes % 60;
                             return `${logoutHours.toString().padStart(2, '0')}:${logoutMins.toString().padStart(2, '0')}`;
+                          }
+                          
+                          // For yesterday, show the actual logout time
+                          if (dateFilter === 'yesterday') {
+                            const logoutTimes = dateFilteredDailyProductivity.filter(dp => dp.logout_time);
+                            if (logoutTimes.length === 0) return '--:--';
+                            return logoutTimes[0].logout_time.substring(0, 5); // Format HH:MM
                           }
                           
                           // For other periods, calculate average logout time
@@ -2558,9 +2631,9 @@ Please provide insights that are specific, actionable, and tailored to these met
                     <p className="text-sm font-medium text-gray-600 mb-2">Avg. Talk time (per call)</p>
                     <p className="text-4xl font-bold text-gray-900">
                       {(() => {
-                        // Use exotel_duration from calls, filter out calls with duration < 60 seconds
+                        // Use exotel_duration from calls, filter out calls with duration < 45 seconds
                         const callsWithValidDuration = dateFilteredCalls.filter(c => 
-                          c.exotel_duration && c.exotel_duration >= 60
+                          c.exotel_duration && c.exotel_duration >= 45
                         );
                         if (callsWithValidDuration.length === 0) return '00:00';
                         const totalDuration = callsWithValidDuration.reduce((sum, c) => sum + (c.exotel_duration || 0), 0);
@@ -2579,11 +2652,8 @@ Please provide insights that are specific, actionable, and tailored to these met
                     <p className="text-sm font-medium text-gray-600 mb-2">Total talk time</p>
                     <p className="text-4xl font-bold text-gray-900">
                       {(() => {
-                        // Use exotel_duration from calls, filter out calls with duration < 60 seconds
-                        const callsWithValidDuration = dateFilteredCalls.filter(c => 
-                          c.exotel_duration && c.exotel_duration >= 60
-                        );
-                        const totalDuration = callsWithValidDuration.reduce((sum, c) => sum + (c.exotel_duration || 0), 0);
+                        // Include ALL calls with any duration - do not filter anything
+                        const totalDuration = dateFilteredCalls.reduce((sum, c) => sum + (c.exotel_duration || 0), 0);
                         const totalMinutes = Math.floor(totalDuration / 60);
                         return totalMinutes + 'm';
                       })()}
@@ -2680,22 +2750,22 @@ Please provide insights that are specific, actionable, and tailored to these met
 
                 {/* Additional Metrics */}
                 <div className="grid grid-cols-2 gap-4">
-                  {/* Profiles Downloaded */}
+                  {/* Calls Analyzed */}
                   <Card className="bg-white shadow-sm hover:shadow-md transition-shadow">
                     <CardContent className="pt-6 pb-6">
-                      <p className="text-sm font-medium text-gray-600 mb-2">Profiles Downloaded</p>
-                      <p className="text-4xl font-bold text-gray-900">
-                        {dateFilteredDailyProductivity.reduce((sum, dp) => sum + (dp.profiles_downloaded || 0), 0)}
+                      <p className="text-sm font-medium text-gray-600 mb-2">Calls Analyzed</p>
+                      <p className="text-4xl font-bold text-blue-600">
+                        {dateFilteredAnalyses.length}
                       </p>
                     </CardContent>
                   </Card>
 
-                  {/* Calls Converted */}
+                  {/* Relevant Calls */}
                   <Card className="bg-white shadow-sm hover:shadow-md transition-shadow">
                     <CardContent className="pt-6 pb-6">
-                      <p className="text-sm font-medium text-gray-600 mb-2">Calls Converted</p>
+                      <p className="text-sm font-medium text-gray-600 mb-2">Relevant Calls</p>
                       <p className="text-4xl font-bold text-green-600">
-                        {dateFilteredCalls.filter(c => c.outcome === 'converted').length}
+                        {dateFilteredCalls.filter(c => (c.exotel_duration || 0) > 30).length}
                       </p>
                     </CardContent>
                   </Card>
@@ -2729,7 +2799,22 @@ Please provide insights that are specific, actionable, and tailored to these met
                     <CardContent className="pt-6 pb-6">
                       <p className="text-sm font-medium text-gray-600 mb-2">Follow-up Calls</p>
                       <p className="text-4xl font-bold text-orange-600">
-                        {dateFilteredCalls.filter(c => c.outcome === 'no-answer' || c.outcome === 'busy').length}
+                        {(() => {
+                          // Get call IDs from analyses that have valid follow-up details
+                          const followUpCallIds = new Set(
+                            dateFilteredAnalyses
+                              .filter(a => {
+                                const hasFollowUp = a.follow_up_details && 
+                                  a.follow_up_details.trim().length > 0 && 
+                                  !a.follow_up_details.toLowerCase().includes('irrelevant according to transcript');
+                                return hasFollowUp && a.recordings?.call_history_id;
+                              })
+                              .map(a => a.recordings?.call_history_id)
+                              .filter(Boolean)
+                          );
+                          // Count calls that have follow-up requirement
+                          return dateFilteredCalls.filter(c => followUpCallIds.has(c.id)).length;
+                        })()}
                       </p>
                     </CardContent>
                   </Card>
@@ -2775,409 +2860,7 @@ Please provide insights that are specific, actionable, and tailored to these met
               </div>
             </TabsContent>
 
-            <TabsContent value="productivity" className="space-y-6">
-              {/* Date Filter */}
-              <Card className="bg-white shadow-sm">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-5 w-5 text-gray-600" />
-                      <span className="text-sm font-semibold text-gray-700">Date Range:</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button 
-                        variant={dateFilter === 'today' ? 'default' : 'outline'} 
-                        size="sm"
-                        onClick={() => {
-                          setDateFilter('today');
-                          setShowCustomDatePicker(false);
-                        }}
-                      >
-                        Today
-                      </Button>
-                      <Button 
-                        variant={dateFilter === 'week' ? 'default' : 'outline'} 
-                        size="sm"
-                        onClick={() => {
-                          setDateFilter('week');
-                          setShowCustomDatePicker(false);
-                        }}
-                      >
-                        This Week
-                      </Button>
-                      <Button 
-                        variant={dateFilter === 'month' ? 'default' : 'outline'} 
-                        size="sm"
-                        onClick={() => {
-                          setDateFilter('month');
-                          setShowCustomDatePicker(false);
-                        }}
-                      >
-                        This Month
-                      </Button>
-                      <Button 
-                        variant={dateFilter === 'custom' ? 'default' : 'outline'} 
-                        size="sm"
-                        onClick={() => {
-                          setDateFilter('custom');
-                          setShowCustomDatePicker(!showCustomDatePicker);
-                        }}
-                      >
-                        Custom Range
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  {showCustomDatePicker && dateFilter === 'custom' && (
-                    <div className="mt-4 pt-4 border-t border-gray-200">
-                      <div className="flex items-center gap-4">
-                        <div className="flex-1">
-                          <Label htmlFor="prodStartDate">Start Date</Label>
-                          <Input 
-                            id="prodStartDate" 
-                            type="date" 
-                            value={customDateRange.startDate}
-                            onChange={(e) => setCustomDateRange(prev => ({ ...prev, startDate: e.target.value }))}
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <Label htmlFor="prodEndDate">End Date</Label>
-                          <Input 
-                            id="prodEndDate" 
-                            type="date"
-                            value={customDateRange.endDate}
-                            onChange={(e) => setCustomDateRange(prev => ({ ...prev, endDate: e.target.value }))}
-                          />
-                        </div>
-                        <Button size="sm" className="mt-6" onClick={applyCustomRange}>
-                          Apply
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Productivity Dashboard */}
-              <div>
-                <h2 className="text-2xl font-bold mb-6">Productivity Dashboard</h2>
-                
-                {/* Key Metrics Row */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-                  <Card className="bg-gradient-to-br from-blue-50 to-blue-100">
-                    <CardContent className="pt-6 text-center">
-                      <div className="text-4xl font-bold text-blue-900 mb-2">
-                        {dateFilteredAnalyses.length}
-                      </div>
-                      <p className="text-sm text-blue-700 font-medium">Total Profiles Downloaded</p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="bg-gradient-to-br from-purple-50 to-purple-100">
-                    <CardContent className="pt-6 text-center">
-                      <div className="text-4xl font-bold text-purple-900 mb-2">
-                        {dateFilteredCalls.length}
-                      </div>
-                      <p className="text-sm text-purple-700 font-medium">Total Calls Made</p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="bg-gradient-to-br from-green-50 to-green-100">
-                    <CardContent className="pt-6 text-center">
-                      <div className="text-4xl font-bold text-green-900 mb-2">
-                        {dateFilteredCalls.filter(c => c.outcome === 'converted').length}
-                      </div>
-                      <p className="text-sm text-green-700 font-medium">Total Converted</p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="bg-gradient-to-br from-orange-50 to-orange-100">
-                    <CardContent className="pt-6 text-center">
-                      <div className="text-4xl font-bold text-orange-900 mb-2">
-                        {(() => {
-                          // Calculate Productivity Score
-                          const profilesDownloaded = dateFilteredAnalyses.length;
-                          const callsMade = dateFilteredCalls.length;
-                          const converted = dateFilteredCalls.filter(c => c.outcome === 'converted').length;
-                          const followUps = dateFilteredCalls.filter(c => c.outcome === 'follow_up').length;
-                          
-                          // Scoring formula
-                          let score = 0;
-                          if (callsMade > 0) {
-                            const conversionRate = (converted / callsMade) * 100;
-                            const profileUtilization = profilesDownloaded > 0 ? (callsMade / profilesDownloaded) * 100 : 0;
-                            const followUpRate = (followUps / callsMade) * 100;
-                            
-                            // Weighted average: 40% conversion, 30% calls, 30% profile utilization
-                            score = (conversionRate * 0.4) + (Math.min(profileUtilization, 100) * 0.3) + (followUpRate * 0.3);
-                          }
-                          
-                          return Math.round(score);
-                        })()}
-                      </div>
-                      <p className="text-sm text-orange-700 font-medium">Productivity Score</p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="bg-gradient-to-br from-cyan-50 to-cyan-100">
-                    <CardContent className="pt-6 text-center">
-                      <div className="text-4xl font-bold text-cyan-900 mb-2">
-                        {(() => {
-                          // Calculate Average Talk Time from exotel_duration column
-                          const callsWithDuration = dateFilteredCalls.filter(c => c.exotel_duration && c.exotel_duration > 0);
-                          if (callsWithDuration.length === 0) return '0:00';
-                          
-                          const totalDuration = callsWithDuration.reduce((sum, call) => {
-                            return sum + (call.exotel_duration || 0);
-                          }, 0);
-                          
-                          const avgDuration = Math.round(totalDuration / callsWithDuration.length);
-                          const minutes = Math.floor(avgDuration / 60);
-                          const seconds = avgDuration % 60;
-                          
-                          return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-                        })()}
-                      </div>
-                      <p className="text-sm text-cyan-700 font-medium">Avg. Talk Time</p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="bg-gradient-to-br from-indigo-50 to-indigo-100">
-                    <CardContent className="pt-6 text-center">
-                      <div className="text-4xl font-bold text-indigo-900 mb-2">
-                        {(() => {
-                          // Calculate Average Work Hours from daily productivity data
-                          if (dateFilteredDailyProductivity.length === 0) return '0.0h';
-                          
-                          const totalHours = dateFilteredDailyProductivity.reduce((sum, dp) => {
-                            return sum + (parseFloat(dp.work_hours) || 0);
-                          }, 0);
-                          
-                          const avgHours = (totalHours / dateFilteredDailyProductivity.length).toFixed(1);
-                          return `${avgHours}h`;
-                        })()}
-                      </div>
-                      <p className="text-sm text-indigo-700 font-medium">Avg. Work Hours</p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="bg-gradient-to-br from-emerald-50 to-emerald-100">
-                    <CardContent className="pt-6 text-center">
-                      <div className="text-4xl font-bold text-emerald-900 mb-2">
-                        {(() => {
-                          // Get today's login time
-                          const today = '2025-11-24'; // Current date
-                          const todayData = dailyProductivity.find(dp => dp.date === today);
-                          
-                          if (!todayData || !todayData.login_time) return '--:--';
-                          
-                          // Format time to remove seconds for cleaner display
-                          const time = todayData.login_time.substring(0, 5);
-                          return time;
-                        })()}
-                      </div>
-                      <p className="text-sm text-emerald-700 font-medium">Today's Login</p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="bg-gradient-to-br from-teal-50 to-teal-100">
-                    <CardContent className="pt-6 text-center">
-                      <div className="text-4xl font-bold text-teal-900 mb-2">
-                        {(() => {
-                          // Calculate Average Login Time
-                          if (dateFilteredDailyProductivity.length === 0) return '--:--';
-                          
-                          const loginTimes = dateFilteredDailyProductivity.filter(dp => dp.login_time);
-                          if (loginTimes.length === 0) return '--:--';
-                          
-                          // Convert times to minutes for averaging
-                          const totalMinutes = loginTimes.reduce((sum, dp) => {
-                            const [hours, minutes] = dp.login_time.split(':').map(Number);
-                            return sum + (hours * 60 + minutes);
-                          }, 0);
-                          
-                          const avgMinutes = Math.round(totalMinutes / loginTimes.length);
-                          const avgHours = Math.floor(avgMinutes / 60);
-                          const avgMins = avgMinutes % 60;
-                          
-                          return `${avgHours.toString().padStart(2, '0')}:${avgMins.toString().padStart(2, '0')}`;
-                        })()}
-                      </div>
-                      <p className="text-sm text-teal-700 font-medium">Avg. Login Time</p>
-                    </CardContent>
-                  </Card>
-
-                  <Card className="bg-gradient-to-br from-violet-50 to-violet-100">
-                    <CardContent className="pt-6 text-center">
-                      <div className="text-4xl font-bold text-violet-900 mb-2">
-                        {(() => {
-                          // Calculate Average Logout Time
-                          if (dateFilteredDailyProductivity.length === 0) return '--:--';
-                          
-                          const logoutTimes = dateFilteredDailyProductivity.filter(dp => dp.logout_time);
-                          if (logoutTimes.length === 0) return '--:--';
-                          
-                          // Convert times to minutes for averaging
-                          const totalMinutes = logoutTimes.reduce((sum, dp) => {
-                            const [hours, minutes] = dp.logout_time.split(':').map(Number);
-                            return sum + (hours * 60 + minutes);
-                          }, 0);
-                          
-                          const avgMinutes = Math.round(totalMinutes / logoutTimes.length);
-                          const avgHours = Math.floor(avgMinutes / 60);
-                          const avgMins = avgMinutes % 60;
-                          
-                          return `${avgHours.toString().padStart(2, '0')}:${avgMins.toString().padStart(2, '0')}`;
-                        })()}
-                      </div>
-                      <p className="text-sm text-violet-700 font-medium">Avg. Logout Time</p>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Detailed Metrics */}
-                <div className="grid grid-cols-1 gap-6 mb-8">
-                  {/* Last 7 Days Productivity Score */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Last 7 Days Productivity Score</CardTitle>
-                      <CardDescription>Your daily productivity trend</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="h-64 flex items-end justify-between gap-2">
-                        {(() => {
-                          // Current week: Monday Nov 24 to Friday Nov 28, 2025
-                          const weekDays = [
-                            { date: '2025-11-24', day: 'Mon' },
-                            { date: '2025-11-25', day: 'Tue' },
-                            { date: '2025-11-26', day: 'Wed' },
-                            { date: '2025-11-27', day: 'Thu' },
-                            { date: '2025-11-28', day: 'Fri' }
-                          ];
-                          
-                          // Use data from database table if available, otherwise calculate
-                          const weekData = weekDays.map(dayInfo => {
-                            // Try to find data from the database
-                            const dbData = dailyProductivity.find(dp => dp.date === dayInfo.date);
-                            
-                            if (dbData) {
-                              // Use database data
-                              return {
-                                date: dayInfo.date,
-                                day: dayInfo.day,
-                                score: Math.round(parseFloat(dbData.productivity_score) || 0),
-                                profilesDownloaded: dbData.profiles_downloaded,
-                                callsMade: dbData.calls_made,
-                                loginTime: dbData.login_time,
-                                logoutTime: dbData.logout_time,
-                                workHours: dbData.work_hours ? parseFloat(dbData.work_hours).toFixed(1) : null
-                              };
-                            } else {
-                              // Fallback: calculate from calls and analyses
-                              const dayCallsFiltered = calls.filter(c => {
-                                const callDate = new Date(c.created_at).toISOString().split('T')[0];
-                                return callDate === dayInfo.date;
-                              });
-                              
-                              const dayAnalysesFiltered = analyses.filter(a => {
-                                const analysisDate = new Date(a.created_at).toISOString().split('T')[0];
-                                return analysisDate === dayInfo.date;
-                              });
-                              
-                              const dayConverted = dayCallsFiltered.filter(c => c.outcome === 'converted').length;
-                              const dayFollowUps = dayCallsFiltered.filter(c => c.outcome === 'follow_up').length;
-                              
-                              let dayScore = 0;
-                              if (dayCallsFiltered.length > 0) {
-                                const conversionRate = (dayConverted / dayCallsFiltered.length) * 100;
-                                const profileUtilization = dayAnalysesFiltered.length > 0 
-                                  ? (dayCallsFiltered.length / dayAnalysesFiltered.length) * 100 
-                                  : 0;
-                                const followUpRate = (dayFollowUps / dayCallsFiltered.length) * 100;
-                                
-                                dayScore = (conversionRate * 0.4) + (Math.min(profileUtilization, 100) * 0.3) + (followUpRate * 0.3);
-                              }
-                              
-                              return {
-                                date: dayInfo.date,
-                                day: dayInfo.day,
-                                score: Math.round(dayScore),
-                                profilesDownloaded: dayAnalysesFiltered.length,
-                                callsMade: dayCallsFiltered.length,
-                                loginTime: null,
-                                logoutTime: null,
-                                workHours: null
-                              };
-                            }
-                          });
-                          
-                          return weekData.map((day, idx) => (
-                            <div key={idx} className="flex-1 flex flex-col justify-end h-full group relative">
-                              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity bg-gray-900 text-white text-xs rounded px-3 py-2 whitespace-nowrap pointer-events-none z-10">
-                                <div className="font-bold mb-1">Score: {day.score}</div>
-                                <div>Profiles: {day.profilesDownloaded || 0}</div>
-                                <div>Calls: {day.callsMade || 0}</div>
-                                {day.loginTime && (
-                                  <>
-                                    <div className="mt-1 pt-1 border-t border-gray-700">Login: {day.loginTime}</div>
-                                    <div>Logout: {day.logoutTime}</div>
-                                    <div>Hours: {day.workHours}h</div>
-                                  </>
-                                )}
-                              </div>
-                              <div 
-                                className="bg-gradient-to-t from-blue-600 to-blue-400 rounded-t transition-all hover:from-blue-700 hover:to-blue-500 cursor-pointer"
-                                style={{ height: `${day.score}%` }}
-                              ></div>
-                              <div className="text-center mt-2">
-                                <span className="text-xs font-medium">{day.day}</span>
-                              </div>
-                            </div>
-                          ));
-                        })()}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Additional Stats */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4" style={{ display: 'none' }}>
-                  <Card>
-                    <CardContent className="pt-6">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-muted-foreground mb-1">Avg Calls per Day</p>
-                          <p className="text-2xl font-bold">
-                            {(() => {
-                              const uniqueDays = new Set(calls.map(c => new Date(c.created_at).toISOString().split('T')[0]));
-                              return uniqueDays.size > 0 ? (calls.length / uniqueDays.size).toFixed(1) : 0;
-                            })()}
-                          </p>
-                        </div>
-                        <PhoneCall className="h-8 w-8 text-blue-600" />
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardContent className="pt-6">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-muted-foreground mb-1">Success Rate</p>
-                          <p className="text-2xl font-bold text-green-600">
-                            {calls.length > 0 
-                              ? ((calls.filter(c => c.outcome === 'converted').length / calls.length) * 100).toFixed(1)
-                              : 0}%
-                          </p>
-                        </div>
-                        <TrendingUp className="h-8 w-8 text-green-600" />
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
-            </TabsContent>
-
+            {/* Productivity tab removed */}
             <TabsContent value="leads" className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -3669,7 +3352,20 @@ Please provide insights that are specific, actionable, and tailored to these met
                         : 'border-transparent text-gray-500 hover:text-gray-700'
                     }`}
                   >
-                    Follow-up ({calls.filter(c => c.outcome === 'no-answer' || c.outcome === 'busy').length})
+                    Follow-up ({(() => {
+                      const followUpCallIds = new Set(
+                        analyses
+                          .filter(a => {
+                            const hasFollowUp = a.follow_up_details && 
+                              a.follow_up_details.trim().length > 0 && 
+                              !a.follow_up_details.toLowerCase().includes('irrelevant according to transcript');
+                            return hasFollowUp && a.recordings?.call_history_id;
+                          })
+                          .map(a => a.recordings?.call_history_id)
+                          .filter(Boolean)
+                      );
+                      return calls.filter(c => followUpCallIds.has(c.id)).length;
+                    })()})
                   </button>
                   <button
                     onClick={() => setCallOutcomeFilter('Failed')}
@@ -3692,6 +3388,7 @@ Please provide insights that are specific, actionable, and tailored to these met
                       <TableHead className="font-semibold">Name</TableHead>
                       <TableHead className="font-semibold">Phone</TableHead>
                       <TableHead className="font-semibold">Date</TableHead>
+                      <TableHead className="font-semibold">Duration</TableHead>
                       <TableHead className="font-semibold">Disposition</TableHead>
                       <TableHead className="font-semibold">Agent</TableHead>
                     </TableRow>
@@ -3704,8 +3401,19 @@ Please provide insights that are specific, actionable, and tailored to these met
                       // Filter by outcome from call_history table
                       if (callOutcomeFilter !== 'all') {
                         if (callOutcomeFilter === 'followup') {
-                          // Follow-up includes both no-answer and busy
-                          filteredCalls = filteredCalls.filter(call => call.outcome === 'no-answer' || call.outcome === 'busy');
+                          // Get call IDs from analyses that have valid follow-up details
+                          const followUpCallIds = new Set(
+                            analyses
+                              .filter(a => {
+                                const hasFollowUp = a.follow_up_details && 
+                                  a.follow_up_details.trim().length > 0 && 
+                                  !a.follow_up_details.toLowerCase().includes('irrelevant according to transcript');
+                                return hasFollowUp && a.recordings?.call_history_id;
+                              })
+                              .map(a => a.recordings?.call_history_id)
+                              .filter(Boolean)
+                          );
+                          filteredCalls = filteredCalls.filter(call => followUpCallIds.has(call.id));
                         } else {
                           filteredCalls = filteredCalls.filter(call => call.outcome === callOutcomeFilter);
                         }
@@ -3751,7 +3459,7 @@ Please provide insights that are specific, actionable, and tailored to these met
                       if (filteredCalls.length === 0) {
                         return (
                           <TableRow>
-                            <TableCell colSpan={5} className="h-32">
+                            <TableCell colSpan={6} className="h-32">
                               <div className="text-center">
                                 <PhoneCall className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                                 <p className="text-muted-foreground">
@@ -3814,6 +3522,15 @@ Please provide insights that are specific, actionable, and tailored to these met
                                 })}
                               </div>
                             </TableCell>
+                            <TableCell className="text-gray-600">
+                              {call.exotel_duration ? (
+                                <div className="text-sm">
+                                  {Math.floor(call.exotel_duration / 60)}m {call.exotel_duration % 60}s
+                                </div>
+                              ) : (
+                                <span className="text-gray-400 text-sm">--</span>
+                              )}
+                            </TableCell>
                             <TableCell>
                               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getDispositionStyle(disposition)}`}>
                                 {getDispositionLabel(disposition)}
@@ -3822,7 +3539,7 @@ Please provide insights that are specific, actionable, and tailored to these met
                             <TableCell className="text-gray-600">
                               <div className="flex items-center justify-end gap-2">
                                 <span className="text-sm">You</span>
-                                <Button size="sm" variant="outline" className="gap-2" onClick={() => window.open(`/call/${call.id}`, '_blank')}>
+                                <Button size="sm" variant="outline" className="gap-2" onClick={() => handleViewCallDetails(call)}>
                                   <Eye className="h-4 w-4" />
                                   Details
                                 </Button>
@@ -3846,7 +3563,10 @@ Please provide insights that are specific, actionable, and tailored to these met
             </TabsContent>
 
             <TabsContent value="profile" className="space-y-6">
-              <EmployeeProfilePage onBack={() => setSelectedTab("overview")} />
+              <EmployeeProfilePage onBack={() => {
+                setSelectedTab("overview");
+                navigate('?tab=overview');
+              }} />
             </TabsContent>
           </Tabs>
         </main>
@@ -4161,7 +3881,150 @@ Please provide insights that are specific, actionable, and tailored to these met
         </DialogContent>
       </Dialog>
 
-      {/* Call details are now shown on a dedicated page (route /call/:callId) */}
+      {/* Call Details Dialog */}
+      <Dialog open={isCallDetailsModalOpen} onOpenChange={setIsCallDetailsModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Call Details</DialogTitle>
+            <DialogDescription>
+              Basic information about this call
+            </DialogDescription>
+          </DialogHeader>
+          {selectedCallDetails && (
+            <div className="space-y-6">
+              {/* Candidate Details */}
+              <div className="border rounded-lg p-4 bg-blue-50">
+                <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  Candidate Details
+                </h3>
+                <div className="space-y-2">
+                  <div className="flex items-start gap-2">
+                    <span className="text-sm font-medium text-gray-600 min-w-[100px]">Name:</span>
+                    <span className="text-sm text-gray-900">{selectedCallDetails.leads?.name || 'N/A'}</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-sm font-medium text-gray-600 min-w-[100px]">Email:</span>
+                    <span className="text-sm text-gray-900">{selectedCallDetails.leads?.email || 'N/A'}</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-sm font-medium text-gray-600 min-w-[100px]">Contact:</span>
+                    <span className="text-sm text-gray-900">{selectedCallDetails.leads?.contact || 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Call Information */}
+              <div className="border rounded-lg p-4 bg-purple-50">
+                <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+                  <PhoneCall className="h-5 w-5" />
+                  Call Information
+                </h3>
+                <div className="space-y-2">
+                  <div className="flex items-start gap-2">
+                    <span className="text-sm font-medium text-gray-600 min-w-[100px]">Date:</span>
+                    <span className="text-sm text-gray-900">
+                      {selectedCallDetails.call_date 
+                        ? new Date(selectedCallDetails.call_date).toLocaleString('en-IN', { 
+                            timeZone: 'Asia/Kolkata',
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit'
+                          })
+                        : 'N/A'}
+                    </span>
+                  </div>
+                  {selectedCallDetails.exotel_duration && (
+                    <div className="flex items-start gap-2">
+                      <span className="text-sm font-medium text-gray-600 min-w-[100px]">Duration:</span>
+                      <span className="text-sm text-gray-900">
+                        {Math.floor(selectedCallDetails.exotel_duration / 60)}m {selectedCallDetails.exotel_duration % 60}s
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex items-start gap-2">
+                    <span className="text-sm font-medium text-gray-600 min-w-[100px]">Outcome:</span>
+                    <Badge variant={
+                      selectedCallDetails.outcome === 'completed' ? 'default' :
+                      selectedCallDetails.outcome === 'interested' ? 'default' :
+                      selectedCallDetails.outcome === 'converted' ? 'default' :
+                      selectedCallDetails.outcome === 'not_interested' ? 'destructive' :
+                      selectedCallDetails.outcome === 'follow_up' ? 'secondary' :
+                      'outline'
+                    }>
+                      {selectedCallDetails.outcome?.replace('_', ' ').toUpperCase()}
+                    </Badge>
+                  </div>
+                  {selectedCallDetails.notes && (
+                    <div className="flex items-start gap-2">
+                      <span className="text-sm font-medium text-gray-600 min-w-[100px]">Notes:</span>
+                      <span className="text-sm text-gray-900">{selectedCallDetails.notes}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Recording URL */}
+              {selectedCallDetails.exotel_recording_url && (
+                <div className="border rounded-lg p-4 bg-orange-50">
+                  <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+                    <Headphones className="h-5 w-5" />
+                    Recording
+                  </h3>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-600">URL:</span>
+                      <a 
+                        href={selectedCallDetails.exotel_recording_url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                      >
+                        Open Recording
+                        <LinkIcon className="h-3 w-3" />
+                      </a>
+                    </div>
+                    <audio controls className="w-full mt-2">
+                      <source src={selectedCallDetails.exotel_recording_url} type="audio/mpeg" />
+                      Your browser does not support the audio element.
+                    </audio>
+                  </div>
+                </div>
+              )}
+
+              {/* Follow-up Details */}
+              {selectedCallDetails.next_follow_up && (
+                <div className="border rounded-lg p-4 bg-yellow-50">
+                  <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+                    <Calendar className="h-5 w-5" />
+                    Follow-up
+                  </h3>
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2">
+                      <span className="text-sm font-medium text-gray-600 min-w-[100px]">Date:</span>
+                      <span className="text-sm text-gray-900">
+                        {new Date(selectedCallDetails.next_follow_up).toLocaleDateString('en-IN', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setIsCallDetailsModalOpen(false)}>
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
 
     </div>

@@ -26,7 +26,9 @@ import {
   Filter,
   ChevronDown,
   Clock,
-  X
+  X,
+  Headphones,
+  Link as LinkIcon
 } from "lucide-react";
 
 interface Call {
@@ -94,6 +96,8 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
   const [selectedCall, setSelectedCall] = useState<Call | null>(null);
   const [recordingUrl, setRecordingUrl] = useState("");
   const [analysisFileName, setAnalysisFileName] = useState("");
+  const [isCallDetailsModalOpen, setIsCallDetailsModalOpen] = useState(false);
+  const [callDetailsData, setCallDetailsData] = useState<Call | null>(null);
   const [expandedFollowUps, setExpandedFollowUps] = useState<Set<string>>(new Set());
   const [processingCalls, setProcessingCalls] = useState<Set<string>>(new Set());
   const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
@@ -291,8 +295,9 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
 
   // Auto-refresh disabled - use manual Refresh button instead
 
-  const handleViewCallDetails = (callId: string) => {
-    window.open(`/call/${callId}`, '_blank');
+  const handleViewCallDetails = (call: Call) => {
+    setCallDetailsData(call);
+    setIsCallDetailsModalOpen(true);
   };
 
   const handleViewAnalysis = (analysisId: string) => {
@@ -1045,7 +1050,7 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
                         <Button 
                           variant="outline" 
                           size="sm"
-                          onClick={() => handleViewCallDetails(call.id)}
+                          onClick={() => handleViewCallDetails(call)}
                           className="gap-1"
                         >
                           <Eye className="h-4 w-4" />
@@ -1163,6 +1168,161 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Call Details Dialog */}
+      <Dialog open={isCallDetailsModalOpen} onOpenChange={setIsCallDetailsModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Call Details</DialogTitle>
+            <DialogDescription>
+              Basic information about this call
+            </DialogDescription>
+          </DialogHeader>
+          {callDetailsData && (
+            <div className="space-y-6">
+              {/* Candidate Details */}
+              <div className="border rounded-lg p-4 bg-blue-50">
+                <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  Candidate Details
+                </h3>
+                <div className="space-y-2">
+                  <div className="flex items-start gap-2">
+                    <span className="text-sm font-medium text-gray-600 min-w-[100px]">Name:</span>
+                    <span className="text-sm text-gray-900">{callDetailsData.leads?.name || 'N/A'}</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-sm font-medium text-gray-600 min-w-[100px]">Email:</span>
+                    <span className="text-sm text-gray-900">{callDetailsData.leads?.email || 'N/A'}</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-sm font-medium text-gray-600 min-w-[100px]">Contact:</span>
+                    <span className="text-sm text-gray-900">{callDetailsData.leads?.contact || 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Employee Details */}
+              <div className="border rounded-lg p-4 bg-green-50">
+                <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+                  <UserIcon className="h-5 w-5" />
+                  Employee Details
+                </h3>
+                <div className="space-y-2">
+                  <div className="flex items-start gap-2">
+                    <span className="text-sm font-medium text-gray-600 min-w-[100px]">Name:</span>
+                    <span className="text-sm text-gray-900">{callDetailsData.employees?.full_name || 'N/A'}</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-sm font-medium text-gray-600 min-w-[100px]">Email:</span>
+                    <span className="text-sm text-gray-900">{callDetailsData.employees?.email || 'N/A'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Call Information */}
+              <div className="border rounded-lg p-4 bg-purple-50">
+                <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+                  <PhoneCall className="h-5 w-5" />
+                  Call Information
+                </h3>
+                <div className="space-y-2">
+                  <div className="flex items-start gap-2">
+                    <span className="text-sm font-medium text-gray-600 min-w-[100px]">Date:</span>
+                    <span className="text-sm text-gray-900">
+                      {callDetailsData.call_date 
+                        ? new Date(callDetailsData.call_date).toLocaleString('en-IN', { 
+                            timeZone: 'Asia/Kolkata',
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit'
+                          })
+                        : 'N/A'}
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-sm font-medium text-gray-600 min-w-[100px]">Outcome:</span>
+                    <Badge variant={
+                      callDetailsData.outcome === 'completed' ? 'default' :
+                      callDetailsData.outcome === 'interested' ? 'default' :
+                      callDetailsData.outcome === 'converted' ? 'default' :
+                      callDetailsData.outcome === 'not_interested' ? 'destructive' :
+                      callDetailsData.outcome === 'follow_up' ? 'secondary' :
+                      'outline'
+                    }>
+                      {callDetailsData.outcome?.replace('_', ' ').toUpperCase()}
+                    </Badge>
+                  </div>
+                  {callDetailsData.notes && (
+                    <div className="flex items-start gap-2">
+                      <span className="text-sm font-medium text-gray-600 min-w-[100px]">Notes:</span>
+                      <span className="text-sm text-gray-900">{callDetailsData.notes}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Recording URL */}
+              {callDetailsData.exotel_recording_url && (
+                <div className="border rounded-lg p-4 bg-orange-50">
+                  <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+                    <Headphones className="h-5 w-5" />
+                    Recording
+                  </h3>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-600">URL:</span>
+                      <a 
+                        href={callDetailsData.exotel_recording_url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                      >
+                        Open Recording
+                        <LinkIcon className="h-3 w-3" />
+                      </a>
+                    </div>
+                    <audio controls className="w-full mt-2">
+                      <source src={callDetailsData.exotel_recording_url} type="audio/mpeg" />
+                      Your browser does not support the audio element.
+                    </audio>
+                  </div>
+                </div>
+              )}
+
+              {/* Follow-up Details */}
+              {callDetailsData.next_follow_up && (
+                <div className="border rounded-lg p-4 bg-yellow-50">
+                  <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+                    <Calendar className="h-5 w-5" />
+                    Follow-up
+                  </h3>
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2">
+                      <span className="text-sm font-medium text-gray-600 min-w-[100px]">Date:</span>
+                      <span className="text-sm text-gray-900">
+                        {new Date(callDetailsData.next_follow_up).toLocaleDateString('en-IN', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setIsCallDetailsModalOpen(false)}>
+              Close
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

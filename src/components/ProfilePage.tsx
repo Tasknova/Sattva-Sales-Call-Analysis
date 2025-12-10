@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Edit2, Save, X, User, Building, Mail, Briefcase } from 'lucide-react';
+import { ArrowLeft, Edit2, Save, X, User, Building, Mail, Briefcase, Lock } from 'lucide-react';
 
 interface ProfilePageProps {
   onBack: () => void;
@@ -22,6 +22,7 @@ export default function ProfilePage({ onBack }: ProfilePageProps) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [passwordEditing, setPasswordEditing] = useState(false);
   const [formData, setFormData] = useState({
     full_name: '',
     company_name: '',
@@ -29,6 +30,11 @@ export default function ProfilePage({ onBack }: ProfilePageProps) {
     company_industry: '',
     position: '',
     use_cases: [] as string[],
+  });
+  const [passwordData, setPasswordData] = useState({
+    current_password: '',
+    new_password: '',
+    confirm_password: '',
   });
 
   const industries = [
@@ -174,6 +180,82 @@ export default function ProfilePage({ onBack }: ProfilePageProps) {
     }));
   };
 
+  const handlePasswordChange = async () => {
+    if (!user) return;
+
+    if (!passwordData.current_password) {
+      toast({
+        title: 'Error',
+        description: 'Please enter your current password.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (passwordData.new_password !== passwordData.confirm_password) {
+      toast({
+        title: 'Error',
+        description: 'New passwords do not match.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (passwordData.new_password.length < 6) {
+      toast({
+        title: 'Error',
+        description: 'Password must be at least 6 characters long.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      // For admin users, we need to verify current password by signing in
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: user.email!,
+        password: passwordData.current_password,
+      });
+
+      if (signInError) {
+        toast({
+          title: 'Error',
+          description: 'Current password is incorrect.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Update password using Supabase Auth
+      const { error } = await supabase.auth.updateUser({
+        password: passwordData.new_password
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      setPasswordData({
+        current_password: '',
+        new_password: '',
+        confirm_password: '',
+      });
+      setPasswordEditing(false);
+      
+      toast({
+        title: 'Password updated',
+        description: 'Your password has been successfully updated.',
+      });
+    } catch (error: any) {
+      console.error('Error updating password:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update password. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -190,16 +272,7 @@ export default function ProfilePage({ onBack }: ProfilePageProps) {
       <div className="max-w-4xl mx-auto px-6 py-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={onBack}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Dashboard
-            </Button>
-            <h1 className="text-3xl font-bold">Profile</h1>
-          </div>
-          <Button variant="outline" onClick={signOut}>
-            Sign Out
-          </Button>
+          <h1 className="text-3xl font-bold">Profile</h1>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -436,6 +509,83 @@ export default function ProfilePage({ onBack }: ProfilePageProps) {
                   </div>
                 </div>
               </CardContent>
+            </Card>
+
+            {/* Password Change */}
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Lock className="h-5 w-5" />
+                    Change Password
+                  </CardTitle>
+                  <CardDescription>
+                    Update your account password
+                  </CardDescription>
+                </div>
+                {!passwordEditing ? (
+                  <Button onClick={() => setPasswordEditing(true)} size="sm" variant="outline">
+                    <Edit2 className="h-4 w-4 mr-2" />
+                    Change Password
+                  </Button>
+                ) : (
+                  <div className="flex gap-2">
+                    <Button onClick={handlePasswordChange} size="sm">
+                      <Save className="h-4 w-4 mr-2" />
+                      Update
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      onClick={() => {
+                        setPasswordEditing(false);
+                        setPasswordData({
+                          current_password: '',
+                          new_password: '',
+                          confirm_password: '',
+                        });
+                      }} 
+                      size="sm"
+                    >
+                      <X className="h-4 w-4 mr-2" />
+                      Cancel
+                    </Button>
+                  </div>
+                )}
+              </CardHeader>
+              {passwordEditing && (
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label htmlFor="current_password">Current Password</Label>
+                    <Input
+                      id="current_password"
+                      type="password"
+                      value={passwordData.current_password}
+                      onChange={(e) => setPasswordData(prev => ({ ...prev, current_password: e.target.value }))}
+                      placeholder="Enter current password"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="new_password">New Password</Label>
+                    <Input
+                      id="new_password"
+                      type="password"
+                      value={passwordData.new_password}
+                      onChange={(e) => setPasswordData(prev => ({ ...prev, new_password: e.target.value }))}
+                      placeholder="Enter new password"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="confirm_password">Confirm New Password</Label>
+                    <Input
+                      id="confirm_password"
+                      type="password"
+                      value={passwordData.confirm_password}
+                      onChange={(e) => setPasswordData(prev => ({ ...prev, confirm_password: e.target.value }))}
+                      placeholder="Confirm new password"
+                    />
+                  </div>
+                </CardContent>
+              )}
             </Card>
           </div>
         </div>

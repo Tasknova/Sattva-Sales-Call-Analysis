@@ -51,6 +51,12 @@ const Index = () => {
       return;
     }
 
+    // Don't change view if already on dashboard or profile - prevents back button issues
+    if (currentView === 'dashboard' || currentView === 'profile') {
+      console.log('Already on dashboard/profile, not changing view');
+      return;
+    }
+
     // User is authenticated, check their role and company status
     if (userRole && company) {
       console.log('User has role and company');

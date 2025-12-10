@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -115,6 +116,10 @@ interface Analysis {
 export default function ManagerDashboard() {
   const { user, userRole, company, signOut } = useAuth();
   const { toast } = useToast();
+  
+  // Session timeout: 30 minutes for manager
+  useSessionTimeout({ timeoutMinutes: 30, warningMinutes: 5 });
+  
   const [loading, setLoading] = useState(true);
   const [selectedTab, setSelectedTab] = useState("overview");
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -153,6 +158,16 @@ export default function ManagerDashboard() {
     groupName: "",
     description: "",
   });
+  
+  // CSV Upload states
+  const [isUploadCSVModalOpen, setIsUploadCSVModalOpen] = useState(false);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [csvLeads, setCsvLeads] = useState<any[]>([]);
+  const [isUploadingCSV, setIsUploadingCSV] = useState(false);
+  const [csvGroupOption, setCsvGroupOption] = useState<'none' | 'existing' | 'new'>('none');
+  const [csvSelectedGroupId, setCsvSelectedGroupId] = useState<string>('');
+  const [csvNewGroupName, setCsvNewGroupName] = useState<string>('');
+  const [csvAssignedTo, setCsvAssignedTo] = useState<string>('unassigned');
   const [isCredentialsModalOpen, setIsCredentialsModalOpen] = useState(false);
   const [isSignOutDialogOpen, setIsSignOutDialogOpen] = useState(false);
   const [dateRangeFilter, setDateRangeFilter] = useState<'today' | 'yesterday' | 'week' | 'month' | 'custom'>('week');
@@ -666,6 +681,149 @@ export default function ManagerDashboard() {
         description: error.message || 'Failed to assign group. Please try again.',
         variant: 'destructive',
       });
+    }
+  };
+
+  // CSV Upload Handlers
+  const handleCSVFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setCsvFile(file);
+      parseCSVFile(file);
+    }
+  };
+
+  const parseCSVFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      const lines = text.split('\n').filter(line => line.trim());
+      
+      if (lines.length < 2) {
+        toast({
+          title: 'Error',
+          description: 'CSV file is empty or invalid.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const parsedLeads: any[] = [];
+      const startIndex = lines[0].toLowerCase().includes('name') ? 1 : 0;
+
+      for (let i = startIndex; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        const values = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g)?.map(v => v.replace(/^"|"$/g, '').trim()) || [];
+        
+        if (values.length >= 3) {
+          parsedLeads.push({
+            name: values[0],
+            email: values[1],
+            contact: values[2],
+            description: values[3] || ''
+          });
+        }
+      }
+
+      if (parsedLeads.length === 0) {
+        toast({
+          title: 'Error',
+          description: 'No valid leads found in CSV file. Please check the format.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      setCsvLeads(parsedLeads);
+      toast({
+        title: 'Success',
+        description: `Found ${parsedLeads.length} leads in CSV file.`,
+      });
+    };
+    reader.readAsText(file);
+  };
+
+  const handleCSVUpload = async () => {
+    if (!userRole?.company_id || csvLeads.length === 0) return;
+
+    try {
+      setIsUploadingCSV(true);
+
+      let groupIdToUse = null;
+
+      if (csvGroupOption === 'new' && csvNewGroupName.trim()) {
+        const { data: newGroup, error: groupError } = await supabase
+          .from('lead_groups')
+          .insert({
+            company_id: userRole.company_id,
+            group_name: csvNewGroupName.trim(),
+            assigned_to: user?.id,
+          })
+          .select()
+          .single();
+
+        if (groupError) throw groupError;
+        groupIdToUse = newGroup.id;
+
+        toast({
+          title: 'Group Created',
+          description: `Lead group "${csvNewGroupName}" created successfully.`,
+        });
+      } else if (csvGroupOption === 'existing' && csvSelectedGroupId) {
+        groupIdToUse = csvSelectedGroupId;
+      }
+
+      let assignedUserId = null;
+      let leadStatus = 'unassigned';
+
+      if (csvAssignedTo && csvAssignedTo !== 'unassigned') {
+        assignedUserId = csvAssignedTo;
+        leadStatus = 'assigned';
+      }
+
+      const leadsToInsert = csvLeads.map(lead => ({
+        name: lead.name,
+        email: lead.email,
+        contact: lead.contact,
+        description: lead.description || null,
+        assigned_to: assignedUserId,
+        user_id: user?.id,
+        company_id: userRole.company_id,
+        status: leadStatus,
+        group_id: groupIdToUse,
+      }));
+
+      const { data, error } = await supabase
+        .from('leads')
+        .insert(leadsToInsert)
+        .select();
+
+      if (error) throw error;
+
+      toast({
+        title: 'Success!',
+        description: `Successfully uploaded ${data?.length || csvLeads.length} leads from CSV.`,
+      });
+
+      setCsvFile(null);
+      setCsvLeads([]);
+      setCsvGroupOption('none');
+      setCsvSelectedGroupId('');
+      setCsvNewGroupName('');
+      setCsvAssignedTo('unassigned');
+      setIsUploadCSVModalOpen(false);
+      fetchData();
+    } catch (error: any) {
+      console.error('Error uploading CSV:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to upload leads. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUploadingCSV(false);
     }
   };
 
@@ -1438,8 +1596,8 @@ export default function ManagerDashboard() {
                             const failedCalls = empCalls.filter(c => c.outcome === 'Failed');
                             const busyCalls = empCalls.filter(c => c.outcome === 'busy');
                             
-                            // Calculate total duration (in seconds) using exotel_duration, excluding calls below 60 seconds
-                            const validCalls = empCalls.filter(call => (call.exotel_duration || 0) >= 60);
+                            // Calculate total duration (in seconds) using exotel_duration, excluding calls below 45 seconds
+                            const validCalls = empCalls.filter(call => (call.exotel_duration || 0) >= 45);
                             const totalDuration = validCalls.reduce((sum, call) => sum + (call.exotel_duration || 0), 0);
                             // Format as HH:MM:SS
                             const hours = Math.floor(totalDuration / 3600);
@@ -1447,7 +1605,7 @@ export default function ManagerDashboard() {
                             const seconds = totalDuration % 60;
                             const formattedDuration = `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
                             
-                            // Calculate average talk time (in seconds) only for calls >= 60 seconds
+                            // Calculate average talk time (in seconds) only for calls >= 45 seconds
                             const avgTalkTime = validCalls.length > 0 ? Math.round(totalDuration / validCalls.length) : 0;
                             const avgMinutes = Math.floor(avgTalkTime / 60);
                             const avgSeconds = avgTalkTime % 60;
@@ -1473,15 +1631,15 @@ export default function ManagerDashboard() {
                             const totalFailed = dateFilteredCalls.filter(c => c.outcome === 'Failed').length;
                             const totalBusy = dateFilteredCalls.filter(c => c.outcome === 'busy').length;
                             
-                            // Calculate total duration across all employees using exotel_duration, excluding calls below 60 seconds
-                            const grandValidCalls = dateFilteredCalls.filter(call => (call.exotel_duration || 0) >= 60);
+                            // Calculate total duration across all employees using exotel_duration, excluding calls below 45 seconds
+                            const grandValidCalls = dateFilteredCalls.filter(call => (call.exotel_duration || 0) >= 45);
                             const grandTotalDuration = grandValidCalls.reduce((sum, call) => sum + (call.exotel_duration || 0), 0);
                             const grandHours = Math.floor(grandTotalDuration / 3600);
                             const grandMinutes = Math.floor((grandTotalDuration % 3600) / 60);
                             const grandSeconds = grandTotalDuration % 60;
                             const grandFormattedDuration = `${grandHours}:${grandMinutes.toString().padStart(2, '0')}:${grandSeconds.toString().padStart(2, '0')}`;
                             
-                            // Calculate average talk time across all calls >= 60 seconds
+                            // Calculate average talk time across all calls >= 45 seconds
                             const grandAvgTalkTime = grandValidCalls.length > 0 ? Math.round(grandTotalDuration / grandValidCalls.length) : 0;
                             const grandAvgMinutes = Math.floor(grandAvgTalkTime / 60);
                             const grandAvgSeconds = grandAvgTalkTime % 60;
@@ -1623,10 +1781,16 @@ export default function ManagerDashboard() {
                   <h2 className="text-2xl font-bold">Lead Management</h2>
                   <p className="text-muted-foreground">Manage and assign leads to your team</p>
                 </div>
-                <Button onClick={() => setIsAddLeadModalOpen(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Lead
-                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setIsUploadCSVModalOpen(true)}>
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload CSV
+                  </Button>
+                  <Button onClick={() => setIsAddLeadModalOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Lead
+                  </Button>
+                </div>
               </div>
 
               {/* Tabs for Leads and Lead Groups */}
@@ -2843,6 +3007,242 @@ export default function ManagerDashboard() {
               setSelectedLeadGroup(null);
             }}>
               Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Upload CSV Modal */}
+      <Dialog open={isUploadCSVModalOpen} onOpenChange={(open) => {
+        setIsUploadCSVModalOpen(open);
+        if (!open) {
+          setCsvFile(null);
+          setCsvLeads([]);
+          setCsvGroupOption('none');
+          setCsvSelectedGroupId('');
+          setCsvNewGroupName('');
+          setCsvAssignedTo('unassigned');
+        }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Upload CSV File</DialogTitle>
+            <DialogDescription>
+              Upload a CSV file to import multiple leads at once.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+              <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              {csvFile ? (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-green-600">✓ File selected: {csvFile.name}</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setCsvFile(null);
+                      setCsvLeads([]);
+                    }}
+                  >
+                    Choose Different File
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-600 mb-2">Click to browse and select a CSV file</p>
+                  <input
+                    type="file"
+                    accept=".csv"
+                    className="hidden"
+                    id="csv-upload-manager"
+                    onChange={handleCSVFileSelect}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => document.getElementById('csv-upload-manager')?.click()}
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Choose File
+                  </Button>
+                </>
+              )}
+            </div>
+
+            {csvLeads.length > 0 && (
+              <>
+                <div className="border rounded-lg p-4 bg-green-50">
+                  <h4 className="font-semibold text-sm mb-2 text-green-800">
+                    Preview: {csvLeads.length} leads found
+                  </h4>
+                  <div className="max-h-48 overflow-y-auto space-y-2">
+                    {csvLeads.slice(0, 5).map((lead, index) => (
+                      <div key={index} className="text-xs p-2 bg-white rounded border">
+                        <p><strong>Name:</strong> {lead.name}</p>
+                        <p><strong>Email:</strong> {lead.email}</p>
+                        <p><strong>Contact:</strong> {lead.contact}</p>
+                        {lead.description && <p><strong>Description:</strong> {lead.description}</p>}
+                      </div>
+                    ))}
+                    {csvLeads.length > 5 && (
+                      <p className="text-xs text-gray-600 text-center pt-2">
+                        ...and {csvLeads.length - 5} more leads
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="border rounded-lg p-4 space-y-4">
+                  <div>
+                    <Label className="text-sm font-semibold">Lead Group (Optional)</Label>
+                    <p className="text-xs text-muted-foreground mb-3">Organize these leads into a group</p>
+                    <div className="space-y-3">
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          id="csv-group-none"
+                          name="csv-group"
+                          value="none"
+                          checked={csvGroupOption === 'none'}
+                          onChange={() => setCsvGroupOption('none')}
+                          className="h-4 w-4"
+                        />
+                        <Label htmlFor="csv-group-none" className="font-normal cursor-pointer">
+                          No group
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          id="csv-group-existing"
+                          name="csv-group"
+                          value="existing"
+                          checked={csvGroupOption === 'existing'}
+                          onChange={() => setCsvGroupOption('existing')}
+                          className="h-4 w-4"
+                        />
+                        <Label htmlFor="csv-group-existing" className="font-normal cursor-pointer">
+                          Add to existing group
+                        </Label>
+                      </div>
+                      {csvGroupOption === 'existing' && (
+                        <div className="ml-6">
+                          <Select value={csvSelectedGroupId} onValueChange={setCsvSelectedGroupId}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a group" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {leadGroups.map((group) => (
+                                <SelectItem key={group.id} value={group.id}>
+                                  {group.group_name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          id="csv-group-new"
+                          name="csv-group"
+                          value="new"
+                          checked={csvGroupOption === 'new'}
+                          onChange={() => setCsvGroupOption('new')}
+                          className="h-4 w-4"
+                        />
+                        <Label htmlFor="csv-group-new" className="font-normal cursor-pointer">
+                          Create new group
+                        </Label>
+                      </div>
+                      {csvGroupOption === 'new' && (
+                        <div className="ml-6">
+                          <Input
+                            placeholder="Enter new group name"
+                            value={csvNewGroupName}
+                            onChange={(e) => setCsvNewGroupName(e.target.value)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border rounded-lg p-4 space-y-3">
+                  <div>
+                    <Label htmlFor="csv-assign" className="text-sm font-semibold">Assign To Employee</Label>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      {csvGroupOption === 'new' 
+                        ? 'Assign leads to an employee' 
+                        : csvGroupOption === 'existing'
+                        ? 'Assign these leads to an employee'
+                        : 'Directly assign these leads to an employee'}
+                    </p>
+                    <Select value={csvAssignedTo} onValueChange={setCsvAssignedTo}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select an employee" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unassigned">Leave Unassigned</SelectItem>
+                        {employees.map((emp) => (
+                          <SelectItem key={emp.user_id} value={emp.user_id}>
+                            {emp.full_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className="text-sm text-gray-500 bg-blue-50 p-3 rounded-lg border border-blue-200">
+              <p className="font-semibold text-blue-900 mb-2">Required CSV Format:</p>
+              <p className="text-blue-800">Name, Email, Contact, Description (optional)</p>
+              <p className="mt-2 text-blue-800"><strong>Example:</strong></p>
+              <code className="text-xs block bg-white p-2 rounded mt-1 text-blue-900">
+                John Doe, john@example.com, +1234567890, Interested in premium plan<br/>
+                Jane Smith, jane@example.com, +0987654321, Follow up next week
+              </code>
+              <p className="mt-2 text-xs text-blue-700">
+                ℹ️ First row can be headers (Name, Email, Contact, Description) or data - both formats supported
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-6">
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => {
+                setIsUploadCSVModalOpen(false);
+                setCsvFile(null);
+                setCsvLeads([]);
+                setCsvGroupOption('none');
+                setCsvSelectedGroupId('');
+                setCsvNewGroupName('');
+                setCsvAssignedTo('unassigned');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              type="button" 
+              onClick={handleCSVUpload}
+              disabled={csvLeads.length === 0 || isUploadingCSV}
+            >
+              {isUploadingCSV ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload {csvLeads.length} Leads
+                </>
+              )}
             </Button>
           </div>
         </DialogContent>

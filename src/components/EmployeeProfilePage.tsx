@@ -116,6 +116,15 @@ export default function EmployeeProfilePage({ onBack }: EmployeeProfilePageProps
   const handlePasswordChange = async () => {
     if (!user) return;
 
+    if (!passwordData.current_password) {
+      toast({
+        title: 'Error',
+        description: 'Please enter your current password.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     if (passwordData.new_password !== passwordData.confirm_password) {
       toast({
         title: 'Error',
@@ -135,6 +144,26 @@ export default function EmployeeProfilePage({ onBack }: EmployeeProfilePageProps
     }
 
     try {
+      // Verify current password first
+      const { data: employeeData, error: verifyError } = await supabase
+        .from('employees')
+        .select('password')
+        .eq('user_id', user.id)
+        .single();
+
+      if (verifyError || !employeeData) {
+        throw new Error('Failed to verify current password');
+      }
+
+      if (employeeData.password !== passwordData.current_password) {
+        toast({
+          title: 'Error',
+          description: 'Current password is incorrect.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
       // Update password in employees table
       const { error } = await supabase
         .from('employees')
@@ -185,16 +214,7 @@ export default function EmployeeProfilePage({ onBack }: EmployeeProfilePageProps
       <div className="max-w-4xl mx-auto px-6 py-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={onBack}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Dashboard
-            </Button>
-            <h1 className="text-3xl font-bold">Profile</h1>
-          </div>
-          <Button variant="outline" onClick={signOut}>
-            Sign Out
-          </Button>
+          <h1 className="text-3xl font-bold">Profile</h1>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -348,6 +368,16 @@ export default function EmployeeProfilePage({ onBack }: EmployeeProfilePageProps
               </CardHeader>
               {passwordEditing && (
                 <CardContent className="space-y-4">
+                  <div>
+                    <Label htmlFor="current_password">Current Password</Label>
+                    <Input
+                      id="current_password"
+                      type="password"
+                      value={passwordData.current_password}
+                      onChange={(e) => setPasswordData(prev => ({ ...prev, current_password: e.target.value }))}
+                      placeholder="Enter current password"
+                    />
+                  </div>
                   <div>
                     <Label htmlFor="new_password">New Password</Label>
                     <Input

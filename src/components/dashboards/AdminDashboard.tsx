@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { useNavigate } from "react-router-dom";
+import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -107,6 +108,10 @@ export default function AdminDashboard() {
   const { user, userRole, company, signOut } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
+  
+  // Session timeout: 30 minutes for admin
+  useSessionTimeout({ timeoutMinutes: 30, warningMinutes: 5 });
+  
   const [loading, setLoading] = useState(true);
   const [managers, setManagers] = useState<Manager[]>([]);
   const [employees, setEmployees] = useState<User[]>([]);
