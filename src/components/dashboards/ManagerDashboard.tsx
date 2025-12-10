@@ -13,6 +13,8 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import CallHistoryManager from "@/components/CallHistoryManager";
 import ManagerProfilePage from "@/components/ManagerProfilePage";
@@ -53,7 +55,8 @@ import {
   AlertTriangle,
   Calendar,
   Briefcase,
-  Filter
+  Filter,
+  CheckCircle2
 } from "lucide-react";
 
 interface Employee {
@@ -104,13 +107,23 @@ interface CallOutcome {
 
 interface Analysis {
   id: string;
-  recording_id: string;
-  sentiment_score: number;
-  engagement_score: number;
-  confidence_score_executive: number;
-  confidence_score_person: number;
-  detailed_call_analysis: any;
+  recording_id?: string;
+  user_id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
   created_at: string;
+  call_quality_score?: number;
+  script_adherence?: number;
+  compilience_expections_score?: number;
+  closure_probability?: number;
+  candidate_acceptance_risk?: string;
+  recordings?: {
+    id: string;
+    file_name?: string;
+    recording_url?: string;
+    status?: string;
+    call_history_id?: string;
+    call_history?: any;
+  };
 }
 
 export default function ManagerDashboard() {
@@ -173,6 +186,10 @@ export default function ManagerDashboard() {
   const [dateRangeFilter, setDateRangeFilter] = useState<'today' | 'yesterday' | 'week' | 'month' | 'custom'>('week');
   const [customStartDate, setCustomStartDate] = useState<string>('');
   const [customEndDate, setCustomEndDate] = useState<string>('');
+  const [callDateFilter, setCallDateFilter] = useState<string>('all');
+  const [callOutcomeFilter, setCallOutcomeFilter] = useState<string>('all');
+  const [selectedCallForDetails, setSelectedCallForDetails] = useState<any>(null);
+  const [isCallDetailsModalOpen, setIsCallDetailsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [createdEmployeeCredentials, setCreatedEmployeeCredentials] = useState<{email: string, password: string, fullName: string} | null>(null);
@@ -247,6 +264,12 @@ export default function ManagerDashboard() {
   const dateFilteredCallOutcomes = callOutcomes.filter(outcome => isDateInRange(outcome.call_date || outcome.created_at));
   const dateFilteredCalls = calls.filter(call => isDateInRange(call.call_date || call.created_at));
   const dateFilteredAnalyses = analyses.filter(analysis => isDateInRange(analysis.created_at));
+
+  // Handler for viewing call details
+  const handleViewCallDetails = (call: any) => {
+    setSelectedCallForDetails(call);
+    setIsCallDetailsModalOpen(true);
+  };
 
   const fetchData = async () => {
     if (!userRole?.company_id) return;
@@ -402,7 +425,18 @@ export default function ManagerDashboard() {
         console.log('Manager Dashboard - Fetching analyses for employee user IDs:', employeeUserIds);
         const { data, error } = await supabase
           .from('analyses')
-          .select(`*, recordings ( id, file_name, stored_file_url, status, call_history_id )`)
+          .select(`
+            id,
+            user_id,
+            status,
+            created_at,
+            call_quality_score,
+            script_adherence,
+            compilience_expections_score,
+            closure_probability,
+            candidate_acceptance_risk,
+            recordings ( id, file_name, recording_url, status, call_history_id )
+          `)
           .in('user_id', employeeUserIds);
         analysesData = data;
         analysesError = error;
@@ -430,7 +464,11 @@ export default function ManagerDashboard() {
             }));
           }
         }
-        console.log('Manager Dashboard - Analyses fetch result:', { data: analysesData, error: analysesError });
+        console.log('Manager Dashboard - Analyses fetch result:', { 
+          count: analysesData?.length || 0, 
+          data: analysesData, 
+          error: analysesError 
+        });
       } else {
         console.log('Manager Dashboard - No employees found, skipping analyses fetch');
       }
@@ -439,6 +477,7 @@ export default function ManagerDashboard() {
         console.error('Analyses error:', analysesError);
         setAnalyses([]);
       } else {
+        console.log('Manager Dashboard - Setting analyses:', analysesData?.length || 0);
         setAnalyses(analysesData || []);
       }
 
@@ -1072,6 +1111,14 @@ export default function ManagerDashboard() {
     return matchesSearch && matchesEmployee && matchesProbability;
   });
 
+  console.log('Manager Dashboard - Filter debug:', {
+    totalAnalyses: analyses.length,
+    filteredCount: filteredAnalyses.length,
+    searchTerm: analysisSearchTerm,
+    selectedEmployee: selectedAnalysisEmployee,
+    selectedProbability: selectedClosureProbability
+  });
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -1339,39 +1386,15 @@ export default function ManagerDashboard() {
                   </CardContent>
                 </Card>
 
-                {/* Team Performance */}
+                {/* Call Quality Score */}
                 <Card className="bg-purple-100">
                   <CardContent className="pt-6 text-center">
                     <div className="text-4xl font-bold">
-                      {analyses.length > 0
-                        ? (analyses.reduce((sum, a) => sum + (a.recruiter_process_score || 0), 0) / analyses.length).toFixed(1)
-                        : '0.0'}/10
+                      {dateFilteredAnalyses.length > 0
+                        ? Math.round(dateFilteredAnalyses.reduce((sum, a) => sum + (a.call_quality_score || 0), 0) / dateFilteredAnalyses.length)
+                        : 0}%
                     </div>
-                    <p className="text-sm text-muted-foreground mt-2">Team Performance</p>
-                  </CardContent>
-                </Card>
-
-                {/* Missed Calls */}
-                <Card className="bg-red-100">
-                  <CardContent className="pt-6 text-center">
-                    <div className="text-4xl font-bold">
-                      {dateFilteredCallOutcomes.filter(c => c.outcome === 'no_answer').length}
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-2">Missed Calls</p>
-                  </CardContent>
-                </Card>
-
-                {/* Alerts & Actions */}
-                <Card className="bg-yellow-100">
-                  <CardContent className="pt-6 text-center">
-                    <div className="text-4xl font-bold">
-                      {dateFilteredAnalyses.filter(a => (a.closure_probability || 0) < 40).length + 
-                       dateFilteredAnalyses.filter(a => {
-                         const risk = a.candidate_acceptance_risk?.toLowerCase() || '';
-                         return risk.includes('high') || risk.includes('critical');
-                       }).length}
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-2">Alerts & Actions</p>
+                    <p className="text-sm text-muted-foreground mt-2">Call Quality Score</p>
                   </CardContent>
                 </Card>
               </div>
@@ -2300,31 +2323,321 @@ export default function ManagerDashboard() {
 
 
             <TabsContent value="call-history" className="space-y-6">
-              <CallHistoryManager 
-                companyId={userRole?.company_id || ''} 
-                managerId={manager?.id} 
-              />
+              {/* Header with Filters */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold">Team Call History</h2>
+                  <p className="text-muted-foreground mt-1">View and manage all team member calls</p>
+                </div>
+                <Select value={callDateFilter} onValueChange={setCallDateFilter}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Last 30 days" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Time</SelectItem>
+                    <SelectItem value="today">Today</SelectItem>
+                    <SelectItem value="week">Last 7 days</SelectItem>
+                    <SelectItem value="month">Last 30 days</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Filter Tabs */}
+              <div className="border-b">
+                <div className="flex space-x-8">
+                  <button
+                    onClick={() => setCallOutcomeFilter('all')}
+                    className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                      callOutcomeFilter === 'all'
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    All ({calls.length})
+                  </button>
+                  <button
+                    onClick={() => setCallOutcomeFilter('followup')}
+                    className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                      callOutcomeFilter === 'followup'
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Follow-up ({(() => {
+                      const followUpCallIds = new Set(
+                        analyses
+                          .filter(a => {
+                            const hasFollowUp = a.follow_up_details && 
+                              a.follow_up_details.trim().length > 0 && 
+                              !a.follow_up_details.toLowerCase().includes('irrelevant according to transcript');
+                            return hasFollowUp && a.recordings?.call_history_id;
+                          })
+                          .map(a => a.recordings?.call_history_id)
+                          .filter(Boolean)
+                      );
+                      return calls.filter(c => followUpCallIds.has(c.id)).length;
+                    })()})
+                  </button>
+                  <button
+                    onClick={() => setCallOutcomeFilter('Failed')}
+                    className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
+                      callOutcomeFilter === 'Failed'
+                        ? 'border-blue-600 text-blue-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    Failed ({calls.filter(c => c.outcome === 'Failed').length})
+                  </button>
+                </div>
+              </div>
+
+              {/* Table */}
+              <div className="bg-white rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-gray-50">
+                      <TableHead className="font-semibold">Name</TableHead>
+                      <TableHead className="font-semibold">Phone</TableHead>
+                      <TableHead className="font-semibold">Date</TableHead>
+                      <TableHead className="font-semibold">Duration</TableHead>
+                      <TableHead className="font-semibold">Disposition</TableHead>
+                      <TableHead className="font-semibold">Agent</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(() => {
+                      // Filter calls based on filters
+                      let filteredCalls = calls;
+
+                      // Filter by outcome from call_history table
+                      if (callOutcomeFilter !== 'all') {
+                        if (callOutcomeFilter === 'followup') {
+                          // Get call IDs from analyses that have valid follow-up details
+                          const followUpCallIds = new Set(
+                            analyses
+                              .filter(a => {
+                                const hasFollowUp = a.follow_up_details && 
+                                  a.follow_up_details.trim().length > 0 && 
+                                  !a.follow_up_details.toLowerCase().includes('irrelevant according to transcript');
+                                return hasFollowUp && a.recordings?.call_history_id;
+                              })
+                              .map(a => a.recordings?.call_history_id)
+                              .filter(Boolean)
+                          );
+                          filteredCalls = filteredCalls.filter(call => followUpCallIds.has(call.id));
+                        } else {
+                          filteredCalls = filteredCalls.filter(call => call.outcome === callOutcomeFilter);
+                        }
+                      }
+
+                      // Filter by date - Use date-only comparison to match dateFilteredCalls
+                      const now = new Date();
+                      if (callDateFilter === 'today') {
+                        // Compare only the date part (YYYY-MM-DD)
+                        const todayDateStr = now.toISOString().split('T')[0];
+                        filteredCalls = filteredCalls.filter(call => {
+                          if (!call.call_date) return false;
+                          const callDate = new Date(call.call_date);
+                          const callDateStr = callDate.toISOString().split('T')[0];
+                          return callDateStr === todayDateStr;
+                        });
+                      } else if (callDateFilter === 'week') {
+                        // Monday to Friday of current week - MATCHES DASHBOARD
+                        const dayOfWeek = now.getDay();
+                        const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+                        const weekStart = new Date(now);
+                        weekStart.setDate(now.getDate() - daysFromMonday);
+                        weekStart.setHours(0, 0, 0, 0);
+                        const weekEnd = new Date(weekStart);
+                        weekEnd.setDate(weekStart.getDate() + 4); // Friday
+                        weekEnd.setHours(23, 59, 59, 999);
+                        filteredCalls = filteredCalls.filter(call => {
+                          const callTime = new Date(call.call_date || call.created_at).getTime();
+                          return callTime >= weekStart.getTime() && callTime <= weekEnd.getTime();
+                        });
+                      } else if (callDateFilter === 'month') {
+                        // Entire current month - MATCHES DASHBOARD
+                        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+                        monthStart.setHours(0, 0, 0, 0);
+                        const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                        monthEnd.setHours(23, 59, 59, 999);
+                        filteredCalls = filteredCalls.filter(call => {
+                          const callTime = new Date(call.call_date || call.created_at).getTime();
+                          return callTime >= monthStart.getTime() && callTime <= monthEnd.getTime();
+                        });
+                      }
+
+                      if (filteredCalls.length === 0) {
+                        return (
+                          <TableRow>
+                            <TableCell colSpan={6} className="h-32">
+                              <div className="text-center">
+                                <PhoneCall className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                                <p className="text-muted-foreground">
+                                  {calls.length === 0 ? 'No calls made yet' : 'No calls match the selected filters'}
+                                </p>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      }
+
+                      return filteredCalls.map((call) => {
+                        const disposition = call.outcome || 'unknown';
+
+                        const getDispositionStyle = (outcome: string) => {
+                          switch (outcome) {
+                            case 'converted':
+                              return 'text-green-600 bg-green-50 border-green-200';
+                            case 'follow_up':
+                              return 'text-orange-600 bg-orange-50 border-orange-200';
+                            case 'rejected':
+                              return 'text-red-600 bg-red-50 border-red-200';
+                            case 'not_answered':
+                              return 'text-gray-600 bg-gray-50 border-gray-200';
+                            default:
+                              return 'text-blue-600 bg-blue-50 border-blue-200';
+                          }
+                        };
+
+                        const getDispositionLabel = (outcome: string) => {
+                          switch (outcome) {
+                            case 'converted':
+                              return 'Converted';
+                            case 'follow_up':
+                              return 'Follow-up';
+                            case 'rejected':
+                              return 'Rejected';
+                            case 'not_answered':
+                              return 'Not Answered';
+                            default:
+                              return outcome.charAt(0).toUpperCase() + outcome.slice(1).replace('_', ' ');
+                          }
+                        };
+
+                        return (
+                          <TableRow key={call.id} className="hover:bg-gray-50">
+                            <TableCell>
+                              <div className="font-medium">{call.leads?.name || 'Unknown'}</div>
+                              <div className="text-sm text-gray-500">{call.leads?.contact || 'N/A'}</div>
+                            </TableCell>
+                            <TableCell className="text-gray-600">
+                              {call.leads?.contact || 'N/A'}
+                            </TableCell>
+                            <TableCell className="text-gray-600">
+                              <div>{new Date(call.created_at).toLocaleDateString('en-GB')}</div>
+                              <div className="text-sm text-gray-500">
+                                {new Date(call.created_at).toLocaleTimeString('en-GB', { 
+                                  hour: '2-digit', 
+                                  minute: '2-digit' 
+                                })}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-gray-600">
+                              {call.exotel_duration ? (
+                                <div className="text-sm">
+                                  {Math.floor(call.exotel_duration / 60)}m {call.exotel_duration % 60}s
+                                </div>
+                              ) : (
+                                <span className="text-gray-400 text-sm">--</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getDispositionStyle(disposition)}`}>
+                                {getDispositionLabel(disposition)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-gray-600">
+                              <div className="flex items-center justify-end gap-2">
+                                <span className="text-sm">{call.employees?.full_name || 'Unknown'}</span>
+                                <Button size="sm" variant="outline" className="gap-2" onClick={() => handleViewCallDetails(call)}>
+                                  <Eye className="h-4 w-4" />
+                                  Details
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      });
+                    })()}
+                  </TableBody>
+                </Table>
+              </div>
             </TabsContent>
 
             <TabsContent value="analysis" className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-bold">Call Analysis</h2>
-                <p className="text-muted-foreground">View all call analyses from your team.</p>
+              {/* Header Section */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-3xl font-bold text-gray-900">Team Call Analyses</h1>
+                  <p className="text-muted-foreground mt-1">Track and analyze your team's call performance</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="px-3 py-1">
+                    <BarChart3 className="h-3 w-3 mr-1" />
+                    {filteredAnalyses.length} Analyses
+                  </Badge>
+                </div>
               </div>
-              
-              {/* Filters */}
+
+              {/* Statistics Cards */}
+              {analyses.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+                    <CardContent className="pt-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-purple-700">Total Analyses</p>
+                          <p className="text-3xl font-bold text-purple-900 mt-1">{analyses.length}</p>
+                        </div>
+                        <div className="h-12 w-12 bg-purple-200 rounded-full flex items-center justify-center">
+                          <BarChart3 className="h-6 w-6 text-purple-600" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+                    <CardContent className="pt-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-green-700">Avg Closure Rate</p>
+                          <p className="text-3xl font-bold text-green-900 mt-1">
+                            {Math.round(analyses.reduce((sum, a) => sum + (a.closure_probability || 0), 0) / analyses.length)}%
+                          </p>
+                        </div>
+                        <div className="h-12 w-12 bg-green-200 rounded-full flex items-center justify-center">
+                          <TrendingUp className="h-6 w-6 text-green-600" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+                    <CardContent className="pt-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-blue-700">High Closure (≥70%)</p>
+                          <p className="text-3xl font-bold text-blue-900 mt-1">
+                            {analyses.filter(a => (a.closure_probability || 0) >= 70).length}
+                          </p>
+                        </div>
+                        <div className="h-12 w-12 bg-blue-200 rounded-full flex items-center justify-center">
+                          <CheckCircle2 className="h-6 w-6 text-blue-600" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+
+              {/* Filters and Search */}
               <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Filter className="h-5 w-5" />
-                    Filters
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <CardContent className="pt-6">
+                  <div className="flex flex-col md:flex-row gap-4">
                     {/* Search */}
-                    <div className="relative md:col-span-3">
-                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <div className="flex-1 relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                       <Input
                         placeholder="Search by lead name..."
                         value={analysisSearchTerm}
@@ -2354,80 +2667,97 @@ export default function ManagerDashboard() {
                       className="px-3 py-2 border border-input bg-background rounded-md text-sm"
                     >
                       <option value="all">All Probabilities</option>
-                      <option value="high">High (&gt;=70%)</option>
+                      <option value="high">High (≥70%)</option>
                       <option value="medium">Medium (40-69%)</option>
                       <option value="low">Low (&lt;40%)</option>
                     </select>
-
-                    {/* Results Count */}
-                    <div className="flex items-center justify-center text-sm text-muted-foreground border rounded-md px-3 py-2 bg-muted/30">
-                      <strong className="mr-1">{filteredAnalyses.length}</strong> analysis{filteredAnalyses.length !== 1 ? 'es' : ''} found
-                    </div>
                   </div>
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>All Analyses</CardTitle>
-                  <CardDescription>
-                    Click any analysis to view detailed insights
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {filteredAnalyses.length === 0 ? (
-                    <div className="text-center py-8">
-                      <BarChart3 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                      <p className="text-muted-foreground">No analyses found</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {filteredAnalyses.map((analysis) => (
-                        <div 
-                          key={analysis.id} 
-                          className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
-                          onClick={() => window.open(`/analysis/${analysis.id}`, '_blank')}
-                        >
-                          <div className="flex items-center space-x-3 flex-1">
-                            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                              <BarChart3 className="h-5 w-5 text-blue-600" />
+              {/* Analyses Grid */}
+              <div className="space-y-4">
+                {filteredAnalyses.length === 0 ? (
+                  <Card>
+                    <CardContent className="py-12">
+                      <div className="text-center">
+                        <BarChart3 className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                        <p className="text-lg font-medium text-gray-500">
+                          {analyses.length === 0 ? 'No analyses found' : 'No analyses match your filters'}
+                        </p>
+                        <p className="text-sm text-gray-400 mt-2">
+                          {analyses.length === 0 
+                            ? 'Team call analyses will appear here once available' 
+                            : 'Try adjusting your search or filters'}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  filteredAnalyses.map((analysis) => (
+                    <Card 
+                      key={analysis.id} 
+                      className="hover:shadow-lg transition-all duration-200 cursor-pointer"
+                      onClick={() => navigate(`/analysis/${analysis.id}`)}
+                    >
+                      <CardContent className="pt-6">
+                        <div className="flex items-start justify-between">
+                          {/* Left Section - Lead Info */}
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-3">
+                              <h3 className="text-lg font-semibold text-gray-900">
+                                {analysis.recordings?.call_history?.leads?.name || 'Unknown Lead'}
+                              </h3>
+                              <Badge 
+                                variant="outline"
+                                className="capitalize text-xs"
+                              >
+                                <User className="h-3 w-3 mr-1" />
+                                {analysis.recordings?.call_history?.employees?.full_name || 'Unknown Employee'}
+                              </Badge>
                             </div>
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1">
-                                <p className="font-medium">
-                                  Call with {analysis.recordings?.call_history?.leads?.name || 'Unknown Lead'}
-                                </p>
-                                <Badge variant="outline" className="text-xs">
-                                  <User className="h-3 w-3 mr-1" />
-                                  {analysis.recordings?.call_history?.employees?.full_name || 'Unknown Employee'}
-                                </Badge>
-                              </div>
-                              <p className="text-sm text-muted-foreground">
-                                {new Date(analysis.created_at).toLocaleDateString()}
-                              </p>
-                              {analysis.closure_probability && (
-                                <div className="flex items-center gap-2 mt-1">
-                                  <Badge 
-                                    variant="outline" 
-                                    className={`text-xs ${
-                                      analysis.closure_probability >= 70 ? 'bg-green-50 text-green-700 border-green-300' :
-                                      analysis.closure_probability >= 40 ? 'bg-yellow-50 text-yellow-700 border-yellow-300' :
-                                      'bg-red-50 text-red-700 border-red-300'
-                                    }`}
-                                  >
-                                    Closure: {analysis.closure_probability}%
-                                  </Badge>
+
+                            {/* Metrics Row */}
+                            <div className="space-y-2">
+                              {/* Closure Probability */}
+                              {analysis.closure_probability !== null && analysis.closure_probability !== undefined && (
+                                <div>
+                                  <p className="text-xs text-gray-500 mb-1">Closure Probability</p>
+                                  <div className="flex items-center gap-2">
+                                    <Progress 
+                                      value={analysis.closure_probability} 
+                                      className="h-2 flex-1"
+                                    />
+                                    <span className="text-sm font-semibold text-gray-700 min-w-[45px]">
+                                      {Math.round(analysis.closure_probability)}%
+                                    </span>
+                                  </div>
                                 </div>
                               )}
+
+                              {/* Date */}
+                              <p className="text-xs text-gray-500">
+                                Analyzed on {new Date(analysis.created_at).toLocaleDateString('en-US', { 
+                                  month: 'short', 
+                                  day: 'numeric', 
+                                  year: 'numeric' 
+                                })}
+                              </p>
                             </div>
                           </div>
-                          <Eye className="h-5 w-5 text-muted-foreground" />
+
+                          {/* Right Section - View Button */}
+                          <div className="ml-4">
+                            <Button variant="ghost" size="sm">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                      </CardContent>
+                    </Card>
+                  ))
+                )}
+              </div>
             </TabsContent>
 
             <TabsContent value="reports" className="space-y-6">
