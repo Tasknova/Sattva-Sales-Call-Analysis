@@ -25,7 +25,7 @@ import EmployeeProductivityPage from "@/components/EmployeeProductivityPage";
 import AddLeadModal from "@/components/AddLeadModal";
 import EditLeadModal from "@/components/EditLeadModal";
 import { useLeads, useClients } from "@/hooks/useSupabaseData";
-import { ScatterChart, Scatter, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, Tooltip as ChartTooltip, Legend } from "recharts";
+import { ScatterChart, Scatter, BarChart, Bar, LineChart, Line, PieChart, Pie, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Cell, Tooltip as ChartTooltip, Legend } from "recharts";
 import { 
   Users, 
   UserPlus, 
@@ -1425,107 +1425,89 @@ export default function ManagerDashboard() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Left Column */}
                 <div className="space-y-6">
-                  {/* Client Overview Chart - Conversions by Day */}
+                  {/* Call Outcomes Pie Chart */}
                   <Card>
                     <CardHeader>
-                      <CardTitle>{company?.industry?.toLowerCase() === 'hr' ? 'Client Conversions' : 'Lead Conversions'}</CardTitle>
-                      <CardDescription>Weekly conversion frequency by client</CardDescription>
+                      <CardTitle>Call Outcomes</CardTitle>
+                      <CardDescription>Distribution of call results for your team</CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div className="h-64">
+                      <div className="h-[280px]">
                         <ResponsiveContainer width="100%" height="100%">
-                          <LineChart 
-                            data={(() => {
-                              // Get conversions grouped by day of week (weekdays only) for each client
-                              const weekdayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
-                              const dataByDay = [];
-                              
-                              // Initialize weekdays with 0 conversions for each client
-                              weekdayNames.forEach((day, index) => {
-                                const dayData: any = { day };
-                                
-                                // For each client, count conversions on this day
-                                assignedClients.forEach(client => {
-                                  const clientLeadIds = allLeads?.filter(l => l.client_id === client.id).map(l => l.id) || [];
-                                  const conversionsCount = dateFilteredCalls.filter(call => {
-                                    if (call.outcome !== 'converted') return false;
-                                    if (!clientLeadIds.includes(call.lead_id)) return false;
-                                    
-                                    const date = new Date(call.created_at);
-                                    const dayOfWeek = date.getUTCDay();
-                                    
-                                    // Only include this weekday (index + 1 because Monday is day 1)
-                                    return dayOfWeek === index + 1;
-                                  }).length;
-                                  
-                                  dayData[client.name] = conversionsCount;
-                                });
-                                
-                                dataByDay.push(dayData);
-                              });
-                              
-                              return dataByDay;
-                            })()}
-                            margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                          >
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis 
-                              dataKey="day" 
-                              label={{ value: 'Day of Week', position: 'insideBottom', offset: -5 }}
-                            />
-                            <YAxis 
-                              label={{ value: 'Conversions', angle: -90, position: 'insideLeft' }}
-                              allowDecimals={false}
-                            />
+                          <PieChart>
+                            <Pie
+                              data={[
+                                { name: 'Completed (Relevant)', value: dateFilteredCalls.filter(c => c.outcome === 'completed' && (c.exotel_duration || 0) >= 30).length, fill: '#22c55e' },
+                                { name: 'Completed (Irrelevant)', value: dateFilteredCalls.filter(c => c.outcome === 'completed' && (c.exotel_duration || 0) < 30).length, fill: '#86efac' },
+                                { name: 'Busy', value: dateFilteredCalls.filter(c => c.outcome === 'busy').length, fill: '#f59e0b' },
+                                { name: 'No Answer', value: dateFilteredCalls.filter(c => c.outcome === 'no-answer').length, fill: '#6366f1' },
+                                { name: 'Failed', value: dateFilteredCalls.filter(c => c.outcome === 'failed').length, fill: '#ef4444' },
+                              ].filter(d => d.value > 0)}
+                              cx="35%"
+                              cy="50%"
+                              innerRadius={50}
+                              outerRadius={85}
+                              paddingAngle={2}
+                              dataKey="value"
+                              label={(entry) => `${entry.value}`}
+                            >
+                              {[
+                                { name: 'Completed (Relevant)', value: dateFilteredCalls.filter(c => c.outcome === 'completed' && (c.exotel_duration || 0) >= 30).length, fill: '#22c55e' },
+                                { name: 'Completed (Irrelevant)', value: dateFilteredCalls.filter(c => c.outcome === 'completed' && (c.exotel_duration || 0) < 30).length, fill: '#86efac' },
+                                { name: 'Busy', value: dateFilteredCalls.filter(c => c.outcome === 'busy').length, fill: '#f59e0b' },
+                                { name: 'No Answer', value: dateFilteredCalls.filter(c => c.outcome === 'no-answer').length, fill: '#6366f1' },
+                                { name: 'Failed', value: dateFilteredCalls.filter(c => c.outcome === 'failed').length, fill: '#ef4444' },
+                              ].filter(d => d.value > 0).map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.fill} />
+                              ))}
+                            </Pie>
                             <ChartTooltip 
                               content={({ active, payload }) => {
                                 if (active && payload && payload.length) {
                                   return (
                                     <div className="bg-white p-3 border rounded shadow-lg">
-                                      <p className="font-medium mb-2">{payload[0].payload.day}</p>
-                                      {payload.map((entry: any, index: number) => (
-                                        <p key={index} className="text-sm" style={{ color: entry.color }}>
-                                          {entry.name}: {entry.value} conversion{entry.value !== 1 ? 's' : ''}
-                                        </p>
-                                      ))}
+                                      <p className="font-medium text-sm">{payload[0].name}</p>
+                                      <p className="text-sm text-gray-600">Count: {payload[0].value}</p>
                                     </div>
                                   );
                                 }
                                 return null;
                               }}
                             />
-                            {assignedClients.map((client, index) => {
-                              // Assign colors: orange for first client (TCS), green for second (Wipro), etc.
-                              const colors = ['#f97316', '#22c55e', '#3b82f6', '#a855f7', '#ef4444'];
-                              const color = colors[index % colors.length];
-                              
-                              return (
-                                <Line 
-                                  key={client.id}
-                                  type="monotone" 
-                                  dataKey={client.name}
-                                  stroke={color}
-                                  strokeWidth={2}
-                                  dot={{ fill: color, r: 6 }}
-                                  activeDot={{ r: 8 }}
-                                />
-                              );
-                            })}
-                          </LineChart>
+                          </PieChart>
                         </ResponsiveContainer>
                       </div>
-                      <div className="flex items-center justify-center gap-6 mt-4 flex-wrap">
-                        {assignedClients.map((client, index) => {
-                          const colors = ['#f97316', '#22c55e', '#3b82f6', '#a855f7', '#ef4444'];
-                          const color = colors[index % colors.length];
-                          
-                          return (
-                            <div key={client.id} className="flex items-center gap-2">
-                              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }}></div>
-                              <span className="text-sm">{client.name}</span>
-                            </div>
-                          );
-                        })}
+                      <div className="mt-3 space-y-2 text-xs">
+                        {dateFilteredCalls.filter(c => c.outcome === 'completed' && (c.exotel_duration || 0) >= 30).length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                            <span className="text-gray-600">Completed - Relevant ≥30s ({dateFilteredCalls.filter(c => c.outcome === 'completed' && (c.exotel_duration || 0) >= 30).length})</span>
+                          </div>
+                        )}
+                        {dateFilteredCalls.filter(c => c.outcome === 'completed' && (c.exotel_duration || 0) < 30).length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-green-300"></div>
+                            <span className="text-gray-600">Completed - Irrelevant &lt;30s ({dateFilteredCalls.filter(c => c.outcome === 'completed' && (c.exotel_duration || 0) < 30).length})</span>
+                          </div>
+                        )}
+                        {dateFilteredCalls.filter(c => c.outcome === 'busy').length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-amber-500"></div>
+                            <span className="text-gray-600">Busy ({dateFilteredCalls.filter(c => c.outcome === 'busy').length})</span>
+                          </div>
+                        )}
+                        {dateFilteredCalls.filter(c => c.outcome === 'no-answer').length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-indigo-500"></div>
+                            <span className="text-gray-600">No Answer ({dateFilteredCalls.filter(c => c.outcome === 'no-answer').length})</span>
+                          </div>
+                        )}
+                        {dateFilteredCalls.filter(c => c.outcome === 'failed').length > 0 && (
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                            <span className="text-gray-600">Failed ({dateFilteredCalls.filter(c => c.outcome === 'failed').length})</span>
+                          </div>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
