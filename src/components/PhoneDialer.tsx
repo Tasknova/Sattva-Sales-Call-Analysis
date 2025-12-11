@@ -39,6 +39,7 @@ export default function PhoneDialer({ onCallComplete }: PhoneDialerProps) {
   });
   const [fromNumber, setFromNumber] = useState("");
   const [callerId, setCallerId] = useState("");
+  const [hasAssignedNumber, setHasAssignedNumber] = useState(false);
 
   // Lead details state
   const [leadDetails, setLeadDetails] = useState({
@@ -56,8 +57,56 @@ export default function PhoneDialer({ onCallComplete }: PhoneDialerProps) {
   useEffect(() => {
     if (userRole?.company_id) {
       fetchCompanySettings();
+      fetchAssignedPhoneNumber();
     }
   }, [userRole]);
+
+  const fetchAssignedPhoneNumber = async () => {
+    if (!userRole?.id) {
+      console.log('❌ No userRole.id found');
+      return;
+    }
+
+    console.log('🔍 Fetching assigned phone number for employee ID:', userRole.id);
+    console.log('🔍 Full userRole:', userRole);
+
+    try {
+      // Get employee's assigned phone number from phone_numbers table
+      const { data, error } = await supabase
+        .from('phone_numbers')
+        .select('*')
+        .eq('employee_id', userRole.id)
+        .eq('is_active', true)
+        .single();
+
+      console.log('📞 Phone number query result:', { data, error });
+
+      if (error) {
+        if (error.code !== 'PGRST116') {
+          console.error('❌ Error fetching assigned phone number:', error);
+        } else {
+          console.log('ℹ️ No phone number found for employee ID:', userRole.id);
+        }
+        setHasAssignedNumber(false);
+        setFromNumber('');
+        return;
+      }
+
+      if (data?.phone_number) {
+        console.log('✅ Found assigned phone number:', data.phone_number);
+        setFromNumber(data.phone_number);
+        setHasAssignedNumber(true);
+      } else {
+        console.log('⚠️ No phone_number in data');
+        setHasAssignedNumber(false);
+        setFromNumber('');
+      }
+    } catch (error) {
+      console.error('❌ Error in fetchAssignedPhoneNumber:', error);
+      setHasAssignedNumber(false);
+      setFromNumber('');
+    }
+  };
 
   const fetchCompanySettings = async () => {
     if (!userRole?.company_id) return;
@@ -75,14 +124,7 @@ export default function PhoneDialer({ onCallComplete }: PhoneDialerProps) {
       }
 
       if (data) {
-        setCompanySettings({
-          caller_id: data.caller_id || "09513886363",
-          from_numbers: data.from_numbers || ["7887766008"],
-        });
-        
-        if (data.from_numbers && data.from_numbers.length > 0) {
-          setFromNumber(data.from_numbers[0]);
-        }
+        // Only set caller_id from company settings
         if (data.caller_id) {
           setCallerId(data.caller_id);
         }
@@ -463,21 +505,18 @@ const initiateExotelCall = async (from: string, to: string, callerId: string) =>
   return (
     <>
       <div className="space-y-4">
-          {/* From Number Selection */}
+          {/* From Number Display - Show assigned number only */}
           <div>
-            <Label htmlFor="fromNumber" className="text-sm">Calling From</Label>
-            <Select value={fromNumber} onValueChange={setFromNumber}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select number" />
-              </SelectTrigger>
-              <SelectContent>
-                {companySettings.from_numbers.map((number) => (
-                  <SelectItem key={number} value={number}>
-                    {number}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label htmlFor="fromNumber" className="text-sm">Your Assigned Number</Label>
+            {hasAssignedNumber ? (
+              <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <p className="font-mono font-semibold text-lg text-green-900">{fromNumber}</p>
+              </div>
+            ) : (
+              <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <p className="text-sm text-yellow-800">No phone number assigned. Contact your administrator.</p>
+              </div>
+            )}
           </div>
 
           {/* Display */}
@@ -548,13 +587,18 @@ const initiateExotelCall = async (from: string, to: string, callerId: string) =>
             </Button>
             <Button
               onClick={handleMakeCall}
-              disabled={isCallInProgress || !phoneNumber || !fromNumber}
+              disabled={isCallInProgress || !phoneNumber || !fromNumber || !hasAssignedNumber}
               className="h-12 bg-green-600 hover:bg-green-700"
             >
               {isCallInProgress ? (
                 <>
                   <Loader2 className="h-5 w-5 mr-2 animate-spin" />
                   Calling...
+                </>
+              ) : !hasAssignedNumber ? (
+                <>
+                  <PhoneCall className="h-5 w-5 mr-2" />
+                  No Number Assigned
                 </>
               ) : (
                 <>

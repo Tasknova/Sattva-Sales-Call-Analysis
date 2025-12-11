@@ -259,6 +259,7 @@ export default function AnalysisDetail() {
                     {(() => {
                       const objRaised = analysis.objections_detected || analysis.objections_raised || '';
                       if (typeof objRaised === 'number') return objRaised;
+                      if (!objRaised) return 0;
                       const count = String(objRaised).split('\n').filter(line => line.trim()).length;
                       return count > 0 ? count : 0;
                     })()}
@@ -274,6 +275,7 @@ export default function AnalysisDetail() {
                     {(() => {
                       const objHandled = analysis.objections_handled || analysis.objections_handeled || '';
                       if (typeof objHandled === 'number') return objHandled;
+                      if (!objHandled) return 0;
                       const count = String(objHandled).split('\n').filter(line => line.trim()).length;
                       return count > 0 ? count : 0;
                     })()}

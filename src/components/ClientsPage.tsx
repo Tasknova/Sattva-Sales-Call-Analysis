@@ -41,6 +41,7 @@ import {
 } from "lucide-react";
 import { useClients, useCreateClient, useUpdateClient, useDeleteClient, useManagerClientAssignments } from "@/hooks/useSupabaseData";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 import { Client } from "@/lib/supabase";
 
 interface ClientsPageProps {
@@ -48,6 +49,7 @@ interface ClientsPageProps {
 }
 
 export default function ClientsPage({ managerId }: ClientsPageProps = {}) {
+  const { company } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
@@ -131,12 +133,19 @@ export default function ClientsPage({ managerId }: ClientsPageProps = {}) {
       return;
     }
 
+    if (!company?.id) {
+      toast({
+        title: "Error",
+        description: "Company information not found",
+        variant: "destructive",
+      });
+      return;
+    }
+
     try {
-      // You'll need to get company_id from your auth context or user profile
-      // For now, using a placeholder - update this with actual company_id
       await createClient.mutateAsync({
         ...formData,
-        company_id: "placeholder-company-id" // TODO: Get from context
+        company_id: company.id
       });
       toast({
         title: "Success",

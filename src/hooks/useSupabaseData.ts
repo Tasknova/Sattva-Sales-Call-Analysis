@@ -495,22 +495,38 @@ export function useBulkCreateLeads() {
 
 // Clients Hooks
 export function useClients() {
-  const { user } = useAuth()
+  const { user, company } = useAuth()
   
   return useQuery({
-    queryKey: ['clients', user?.id],
+    queryKey: ['clients', user?.id, company?.id],
     queryFn: async () => {
-      if (!user) throw new Error('User not authenticated')
+      if (!user) {
+        console.error('useClients: User not authenticated')
+        throw new Error('User not authenticated')
+      }
+      
+      if (!company?.id) {
+        console.error('useClients: Company ID not found')
+        throw new Error('Company not found')
+      }
+      
+      console.log('useClients: Fetching clients for company_id:', company.id)
       
       const { data, error } = await supabase
         .from('clients')
         .select('*')
+        .eq('company_id', company.id)
         .order('created_at', { ascending: false })
       
-      if (error) throw error
+      if (error) {
+        console.error('useClients: Supabase error:', error)
+        throw error
+      }
+      
+      console.log('useClients: Successfully fetched clients:', data)
       return data as Client[]
     },
-    enabled: !!user
+    enabled: !!user && !!company?.id
   })
 }
 

@@ -1,23 +1,18 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase, UserProfile } from "@/lib/supabase";
 import Dashboard from "@/components/Dashboard";
 import ProfilePage from "@/components/ProfilePage";
-import OnboardingFlow from "@/components/OnboardingFlow";
 import AdminLogin from "@/components/auth/AdminLogin";
 import LoginOptions from "@/components/auth/LoginOptions";
-import CompanyOnboarding from "@/components/auth/CompanyOnboarding";
 import ManagerLogin from "@/components/auth/ManagerLogin";
 import EmployeeLogin from "@/components/auth/EmployeeLogin";
 
-type ViewType = 'admin-login' | 'login-options' | 'company-onboarding' | 'manager-login' | 'employee-login' | 'onboarding' | 'dashboard' | 'profile';
+type ViewType = 'admin-login' | 'login-options' | 'manager-login' | 'employee-login' | 'dashboard' | 'profile';
 
 const Index = () => {
   const { user, userRole, company, loading: authLoading } = useAuth();
   const [currentView, setCurrentView] = useState<ViewType>('login-options');
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [profileLoading, setProfileLoading] = useState(false);
   const [searchParams] = useSearchParams();
 
   // Check if we should show dashboard based on URL parameters
@@ -45,6 +40,13 @@ const Index = () => {
       return;
     }
 
+    // Don't interfere with login screens - let user navigate between them
+    const loginScreens: ViewType[] = ['login-options', 'admin-login', 'manager-login', 'employee-login'];
+    if (!user && loginScreens.includes(currentView)) {
+      console.log('User on login screen, staying on current view');
+      return;
+    }
+
     if (!user) {
       console.log('No user, going to login options');
       setCurrentView('login-options');
@@ -57,85 +59,15 @@ const Index = () => {
       return;
     }
 
-    // User is authenticated, check their role and company status
-    if (userRole && company) {
-      console.log('User has role and company');
-      console.log('Role data:', userRole);
-      console.log('Company data:', company);
+    // User is authenticated, redirect to dashboard
+    if (userRole) {
+      console.log('User authenticated with role, going to dashboard');
       setCurrentView('dashboard');
-    } else if (userRole && !company) {
-      console.log('User has role but no company, going to company onboarding');
-      console.log('Role data:', userRole);
-      setCurrentView('company-onboarding');
-    } else if (!userRole) {
-      // Check if this is a new user or an existing user with missing data
-      console.log('User authenticated but no role, checking if new user or data issue');
-      console.log('User ID:', user?.id);
-      
-      // Check if user has any existing data in the database
-      // If they have a profile but no role, it might be a data issue
-      // If they have no profile at all, they're likely a new user
-      console.log('Checking user profile to determine if new user...');
-      
-      // Check if user has any existing data in the database
-      // If they have a profile but no role, it might be a data issue
-      // If they have no profile at all, they're likely a new user
-      console.log('Checking user profile to determine if new user...');
-      
-      // Check if user has any existing data in the database
-      // If they have a profile but no role, it might be a data issue
-      // If they have no profile at all, they're likely a new user
-      console.log('Checking user profile to determine if new user...');
-      
-      // Check if user has any existing data in the database
-      // If they have a profile but no role, it might be a data issue
-      // If they have no profile at all, they're likely a new user
-      console.log('Checking user profile to determine if new user...');
-      
-      // For now, assume it's a new user and redirect to company onboarding
-      // TODO: Add better logic to distinguish between new users and data issues
-      console.log('Assuming new user, going to company onboarding');
-      setCurrentView('company-onboarding');
     } else {
-      console.log('Unknown state, staying on current view');
-      console.log('Current state:', { userRole, company });
-      // Don't change view if we're not sure about the state
+      console.log('User authenticated but no role found');
+      // Stay on current view (likely a login screen)
     }
-  }, [user, userRole, company, authLoading]);
-
-  const fetchUserProfile = async () => {
-    if (!user) return;
-
-    setProfileLoading(true);
-    try {
-      const { data, error } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle(); // Use maybeSingle instead of single to avoid errors when no record exists
-
-      if (error) {
-        console.error('Error fetching profile:', error);
-        // If it's a 406 or other error, still proceed to onboarding
-        setCurrentView('onboarding');
-        return;
-      }
-
-      setUserProfile(data);
-
-      if (!data || !data.onboarding_completed) {
-        setCurrentView('onboarding');
-      } else {
-        setCurrentView('dashboard');
-      }
-    } catch (error) {
-      console.error('Error fetching profile:', error);
-      // On any error, default to onboarding
-      setCurrentView('onboarding');
-    } finally {
-      setProfileLoading(false);
-    }
-  };
+  }, [user, userRole, company, authLoading, currentView]);
 
   const handleAdminLogin = () => {
     setCurrentView('admin-login');
@@ -149,20 +81,8 @@ const Index = () => {
     setCurrentView('employee-login');
   };
 
-  const handleCompanyOnboardingComplete = () => {
+  const handleLoginComplete = () => {
     setCurrentView('dashboard');
-  };
-
-  const handleManagerLoginComplete = () => {
-    setCurrentView('dashboard');
-  };
-
-  const handleEmployeeLoginComplete = () => {
-    setCurrentView('dashboard');
-  };
-
-  const handleOnboardingComplete = () => {
-    fetchUserProfile(); // Refetch profile and navigate to dashboard
   };
 
   const handleShowProfile = () => {
@@ -175,15 +95,12 @@ const Index = () => {
 
 
   // Show loading spinner while checking auth state
-  if (authLoading || profileLoading) {
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
           <p className="text-muted-foreground">Loading...</p>
-          <p className="text-xs text-muted-foreground mt-2">
-            {authLoading ? 'Authenticating...' : 'Loading profile...'}
-          </p>
         </div>
       </div>
     );
@@ -192,7 +109,7 @@ const Index = () => {
   // Render based on current view
   switch (currentView) {
     case 'admin-login':
-      return <AdminLogin onComplete={handleCompanyOnboardingComplete} onBack={() => setCurrentView('login-options')} />;
+      return <AdminLogin onComplete={handleLoginComplete} onBack={() => setCurrentView('login-options')} />;
     
     case 'login-options':
       return (
@@ -204,17 +121,11 @@ const Index = () => {
         />
       );
     
-    case 'company-onboarding':
-      return <CompanyOnboarding onComplete={handleCompanyOnboardingComplete} onBack={() => setCurrentView('login-options')} />;
-    
     case 'manager-login':
-      return <ManagerLogin onComplete={handleManagerLoginComplete} onBack={() => setCurrentView('login-options')} />;
+      return <ManagerLogin onComplete={handleLoginComplete} onBack={() => setCurrentView('login-options')} />;
     
     case 'employee-login':
-      return <EmployeeLogin onComplete={handleEmployeeLoginComplete} onBack={() => setCurrentView('login-options')} />;
-    
-    case 'onboarding':
-      return <OnboardingFlow onComplete={handleOnboardingComplete} />;
+      return <EmployeeLogin onComplete={handleLoginComplete} onBack={() => setCurrentView('login-options')} />;
     
     case 'profile':
       return <ProfilePage onBack={handleBackToDashboard} />;

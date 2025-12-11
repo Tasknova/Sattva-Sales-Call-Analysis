@@ -91,18 +91,6 @@ export default function LoginOptions({ onAdminLogin, onManagerLogin, onEmployeeL
           transition={{ duration: 0.6 }}
           className="text-center mb-12"
         >
-          {onBack && (
-            <div className="flex justify-center mb-6">
-              <Button
-                variant="ghost"
-                onClick={onBack}
-                className="flex items-center gap-2 bg-white/80 backdrop-blur-sm border border-gray-200 shadow-sm hover:bg-white/90"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Back
-              </Button>
-            </div>
-          )}
           <div className="flex items-center justify-center mb-6">
             <img 
               src="/logo.png" 

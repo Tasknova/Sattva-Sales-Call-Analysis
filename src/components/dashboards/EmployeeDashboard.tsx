@@ -238,7 +238,7 @@ export default function EmployeeDashboard() {
   
   // Exotel calling state
   const [isExotelCallModalOpen, setIsExotelCallModalOpen] = useState(false);
-  const [fromNumber, setFromNumber] = useState(""); // Will be set from company settings
+  const [fromNumber, setFromNumber] = useState(""); // Employee's assigned phone number
   const [toNumber, setToNumber] = useState("");
   const [callerId, setCallerId] = useState(""); // Will be set from company settings
   const [isCallInProgress, setIsCallInProgress] = useState(false);
@@ -246,6 +246,7 @@ export default function EmployeeDashboard() {
   const [callStatus, setCallStatus] = useState("");
   const [callPollingInterval, setCallPollingInterval] = useState<NodeJS.Timeout | null>(null);
   const [currentCallRecordId, setCurrentCallRecordId] = useState<string | null>(null); // Track the call record ID for updating
+  const [hasAssignedNumber, setHasAssignedNumber] = useState(false); // Track if employee has assigned number
   
   // Date filter state
   const [dateFilter, setDateFilter] = useState<'today' | 'yesterday' | 'week' | 'month' | 'custom'>('today');
@@ -281,6 +282,7 @@ export default function EmployeeDashboard() {
     if (userRole && company) {
       fetchData();
       fetchCompanySettings();
+      fetchAssignedPhoneNumber(); // Fetch employee's assigned phone number
       // OPTIMIZATION: Increase refresh interval to 30 seconds instead of 10
       const dataInterval = setInterval(() => {
         fetchData(false); // Don't show loading spinner on automatic refresh
@@ -1293,9 +1295,57 @@ Please provide insights that are specific, actionable, and tailored to these met
     }
   };
 
+  // Fetch employee's assigned phone number
+  const fetchAssignedPhoneNumber = async () => {
+    if (!userRole?.id) {
+      console.log('❌ No userRole.id found in EmployeeDashboard');
+      return;
+    }
+
+    console.log('🔍 [EmployeeDashboard] Fetching assigned phone number for employee ID:', userRole.id);
+    console.log('🔍 [EmployeeDashboard] Full userRole:', userRole);
+
+    try {
+      // Get employee's assigned phone number from phone_numbers table
+      const { data, error } = await supabase
+        .from('phone_numbers')
+        .select('*')
+        .eq('employee_id', userRole.id)
+        .eq('is_active', true)
+        .single();
+
+      console.log('📞 [EmployeeDashboard] Phone number query result:', { data, error });
+
+      if (error) {
+        if (error.code !== 'PGRST116') { // Not a "not found" error
+          console.error('❌ Error fetching assigned phone number:', error);
+        } else {
+          console.log('ℹ️ No phone number found for employee ID:', userRole.id);
+        }
+        setHasAssignedNumber(false);
+        setFromNumber('');
+        return;
+      }
+
+      if (data?.phone_number) {
+        console.log('✅ [EmployeeDashboard] Found assigned phone number:', data.phone_number);
+        setFromNumber(data.phone_number);
+        setHasAssignedNumber(true);
+      } else {
+        console.log('⚠️ No phone_number in data');
+        setHasAssignedNumber(false);
+        setFromNumber('');
+      }
+    } catch (error) {
+      console.error('❌ Error in fetchAssignedPhoneNumber:', error);
+      setHasAssignedNumber(false);
+      setFromNumber('');
+    }
+  };
+
   const fetchCompanySettings = async () => {
     if (!userRole?.company_id) return;
-
+    
     try {
       const { data, error } = await supabase
         .from('company_settings')
@@ -1309,15 +1359,8 @@ Please provide insights that are specific, actionable, and tailored to these met
       }
 
       if (data) {
-        setCompanySettings({
-          caller_id: data.caller_id || "09513886363",
-          from_numbers: data.from_numbers || ["7887766008"],
-        });
-        
-        // Set default values for the call modal
-        if (data.from_numbers && data.from_numbers.length > 0) {
-          setFromNumber(data.from_numbers[0]);
-        }
+        // Only set caller_id from company settings
+        // from_numbers will come from employee's assignment
         if (data.caller_id) {
           setCallerId(data.caller_id);
         }
@@ -1325,9 +1368,7 @@ Please provide insights that are specific, actionable, and tailored to these met
     } catch (error) {
       console.error('Error fetching company settings:', error);
     }
-  };
-
-  const handleSubmitAnalysis = async (e: React.FormEvent) => {
+  };  const handleSubmitAnalysis = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!selectedCall || !recordingUrl.trim() || !analysisFileName.trim()) {
@@ -3783,21 +3824,28 @@ Please provide insights that are specific, actionable, and tailored to these met
           </DialogHeader>
           
           <div className="space-y-4">
-            <div>
-              <Label htmlFor="fromNumber">From Number *</Label>
-              <Select value={fromNumber} onValueChange={setFromNumber} disabled={isCallInProgress}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a phone number" />
-                </SelectTrigger>
-                <SelectContent>
-                  {companySettings.from_numbers.map((number) => (
-                    <SelectItem key={number} value={number}>
-                      {number}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            {/* Show assigned number or warning if no number assigned */}
+            {hasAssignedNumber ? (
+              <div>
+                <Label htmlFor="fromNumber">Your Assigned Phone Number</Label>
+                <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <p className="font-mono font-semibold text-lg text-green-900">{fromNumber}</p>
+                  <p className="text-sm text-green-700 mt-1">This is your assigned calling number</p>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <AlertTriangle className="h-5 w-5 text-yellow-600 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-yellow-900">No Phone Number Assigned</p>
+                    <p className="text-sm text-yellow-700 mt-1">
+                      You don't have a phone number assigned yet. Please contact your administrator to assign you a phone number before making calls.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Call Status Indicator */}
             {isCallInProgress && (
@@ -3833,7 +3881,7 @@ Please provide insights that are specific, actionable, and tailored to these met
               </Button>
               <Button
                 onClick={handleExotelCall}
-                disabled={!fromNumber || !selectedLead?.contact || isCallInProgress}
+                disabled={!hasAssignedNumber || !selectedLead?.contact || isCallInProgress}
               >
                 {isCallInProgress ? (
                   <>
@@ -3843,7 +3891,7 @@ Please provide insights that are specific, actionable, and tailored to these met
                 ) : (
                   <>
                     <Phone className="h-4 w-4 mr-2" />
-                    Call Now
+                    {hasAssignedNumber ? 'Call Now' : 'No Number Assigned'}
                   </>
                 )}
               </Button>

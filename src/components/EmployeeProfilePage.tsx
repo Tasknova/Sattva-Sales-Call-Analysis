@@ -24,7 +24,7 @@ interface EmployeeProfile {
 }
 
 export default function EmployeeProfilePage({ onBack }: EmployeeProfilePageProps) {
-  const { user, userRole, signOut } = useAuth();
+  const { user, userRole, signOut, refreshUserData } = useAuth();
   const { toast } = useToast();
   const [profile, setProfile] = useState<EmployeeProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -91,12 +91,31 @@ export default function EmployeeProfilePage({ onBack }: EmployeeProfilePageProps
         throw error;
       }
 
+      // Update local profile state
       setProfile(prev => prev ? {
         ...prev,
         full_name: formData.full_name,
         contact_number: formData.contact_number,
         updated_at: new Date().toISOString(),
       } : null);
+      
+      // Update localStorage session to reflect new name
+      const customSession = localStorage.getItem('custom_auth_session');
+      if (customSession) {
+        try {
+          const sessionData = JSON.parse(customSession);
+          sessionData.user.user_metadata.full_name = formData.full_name;
+          localStorage.setItem('custom_auth_session', JSON.stringify(sessionData));
+          console.log('Updated session in localStorage with new name');
+        } catch (e) {
+          console.error('Error updating localStorage session:', e);
+        }
+      }
+      
+      // Refresh user data in AuthContext to update the header
+      if (refreshUserData) {
+        await refreshUserData();
+      }
       
       setEditing(false);
       toast({
@@ -315,11 +334,22 @@ export default function EmployeeProfilePage({ onBack }: EmployeeProfilePageProps
                     <Label htmlFor="contact_number">Contact Number</Label>
                     <Input
                       id="contact_number"
+                      type="tel"
                       value={formData.contact_number}
-                      onChange={(e) => setFormData(prev => ({ ...prev, contact_number: e.target.value }))}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, ''); // Only allow digits
+                        if (value.length <= 10) {
+                          setFormData(prev => ({ ...prev, contact_number: value }));
+                        }
+                      }}
                       disabled={!editing}
-                      placeholder="Enter your contact number"
+                      placeholder="Enter 10-digit contact number"
+                      maxLength={10}
+                      pattern="[0-9]{10}"
                     />
+                    {editing && formData.contact_number && formData.contact_number.length !== 10 && (
+                      <p className="text-xs text-red-500 mt-1">Contact number must be exactly 10 digits</p>
+                    )}
                   </div>
                 </div>
               </CardContent>

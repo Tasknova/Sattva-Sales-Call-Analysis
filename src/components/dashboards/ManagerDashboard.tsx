@@ -723,6 +723,28 @@ export default function ManagerDashboard() {
     }
   };
 
+  // Download Sample CSV
+  const downloadSampleCSV = () => {
+    const sampleData = [
+      ['name', 'email', 'contact', 'company', 'description'],
+      ['John Doe', 'john.doe@example.com', '9876543210', 'ABC Corp', 'Interested in software development position'],
+      ['Jane Smith', 'jane.smith@example.com', '9876543211', 'XYZ Ltd', 'Looking for senior developer role'],
+      ['Mike Johnson', 'mike.j@example.com', '9876543212', 'Tech Solutions', 'Experienced in React and Node.js']
+    ];
+    
+    const csvContent = sampleData.map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'sample_leads.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // CSV Upload Handlers
   const handleCSVFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -3362,6 +3384,31 @@ export default function ManagerDashboard() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            {/* Sample CSV Download */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <h4 className="text-sm font-semibold text-blue-900 mb-1">Need a template?</h4>
+                  <p className="text-xs text-blue-700 mb-2">
+                    Download our sample CSV file to see the required format with example data.
+                  </p>
+                  <p className="text-xs text-blue-600 font-mono">
+                    Required columns: name, email, contact, company, description
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={downloadSampleCSV}
+                  className="ml-4 bg-white hover:bg-blue-50 border-blue-300"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Sample CSV
+                </Button>
+              </div>
+            </div>
+
             <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
               <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
               {csvFile ? (

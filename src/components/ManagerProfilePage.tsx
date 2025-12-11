@@ -340,11 +340,22 @@ export default function ManagerProfilePage({ onBack }: ManagerProfilePageProps) 
                     <Label htmlFor="contact_number">Contact Number</Label>
                     <Input
                       id="contact_number"
+                      type="tel"
                       value={formData.contact_number}
-                      onChange={(e) => setFormData(prev => ({ ...prev, contact_number: e.target.value }))}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, ''); // Only allow digits
+                        if (value.length <= 10) {
+                          setFormData(prev => ({ ...prev, contact_number: value }));
+                        }
+                      }}
                       disabled={!editing}
-                      placeholder="Enter your contact number"
+                      placeholder="Enter 10-digit contact number"
+                      maxLength={10}
+                      pattern="[0-9]{10}"
                     />
+                    {editing && formData.contact_number && formData.contact_number.length !== 10 && (
+                      <p className="text-xs text-red-500 mt-1">Contact number must be exactly 10 digits</p>
+                    )}
                   </div>
                   <div>
                     <Label htmlFor="department">Department</Label>

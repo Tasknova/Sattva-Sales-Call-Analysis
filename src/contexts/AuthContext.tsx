@@ -245,7 +245,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       setLoading(false);
     }, 15000); // 15 second timeout
     
-    return () => clearTimeout(timeout);
+    return () => {
+      clearTimeout(timeout);
+    };
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -547,6 +549,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       const employee = employees[0];
 
       console.log('Employee found:', employee);
+      console.log('Employee ID fields:', {
+        id: employee.id,
+        user_id: employee.user_id,
+        role_id: employee.role_id
+      });
       
       // Check if role data is included (new function returns role info)
       if (!employee.role || employee.role !== 'employee') {
@@ -555,15 +562,16 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       }
 
       // Create userRoleData object from the returned data
+      // Use the employees table ID (e.id from RPC), not user_roles.id
       const userRoleData = {
-        id: employee.role_id,
+        id: employee.id, // This is e.id from employees table (first column in SELECT)
         user_id: employee.user_id,
         role: employee.role,
         company_id: employee.role_company_id,
         is_active: true
       };
 
-      console.log('Set user role in context:', userRoleData);
+      console.log('Created userRoleData:', userRoleData);
       console.log('User role data role field:', userRoleData.role);
 
       // Create a mock user object for the session
@@ -701,6 +709,22 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   };
 
   const refreshUserData = async () => {
+    // Check if using custom auth (employee/manager)
+    const customSession = localStorage.getItem('custom_auth_session');
+    if (customSession) {
+      try {
+        const sessionData = JSON.parse(customSession);
+        console.log('Refreshing user data from custom session:', sessionData);
+        setUser(sessionData.user);
+        setUserRole(sessionData.userRole);
+        setCompany(sessionData.company);
+        return;
+      } catch (error) {
+        console.error('Error refreshing custom session:', error);
+      }
+    }
+    
+    // Fallback to fetching from database for Supabase Auth users
     if (user?.id) {
       await fetchUserData(user.id);
     }
