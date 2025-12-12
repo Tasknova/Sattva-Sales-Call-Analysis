@@ -58,6 +58,7 @@ import {
   Filter,
   CheckCircle2
 } from "lucide-react";
+import { Headphones, Link as LinkIcon } from 'lucide-react';
 
 interface Employee {
   id: string;
@@ -188,6 +189,17 @@ export default function ManagerDashboard() {
   const [customEndDate, setCustomEndDate] = useState<string>('');
   const [callDateFilter, setCallDateFilter] = useState<string>('all');
   const [callOutcomeFilter, setCallOutcomeFilter] = useState<string>('all');
+  const [callSearch, setCallSearch] = useState<string>('');
+  const [callSortBy, setCallSortBy] = useState<'date' | 'duration' | 'agent'>('date');
+  const [callSortOrder, setCallSortOrder] = useState<'desc' | 'asc'>('desc');
+  
+  // Team Performance filters
+  const [teamPerfDateFilter, setTeamPerfDateFilter] = useState<'today' | 'yesterday' | 'week' | 'month' | 'custom'>('week');
+  const [teamPerfCustomStartDate, setTeamPerfCustomStartDate] = useState<string>('');
+  const [teamPerfCustomEndDate, setTeamPerfCustomEndDate] = useState<string>('');
+  const [teamPerfEmployeeFilter, setTeamPerfEmployeeFilter] = useState<string>('all');
+  const [teamPerfSortBy, setTeamPerfSortBy] = useState<'name' | 'totalCalls' | 'relevantCalls' | 'irrelevantCalls' | 'contacted' | 'notAnswered' | 'failed' | 'busy' | 'duration' | 'avgTime'>('name');
+  const [teamPerfSortOrder, setTeamPerfSortOrder] = useState<'asc' | 'desc'>('asc');
   const [selectedCallForDetails, setSelectedCallForDetails] = useState<any>(null);
   const [isCallDetailsModalOpen, setIsCallDetailsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
@@ -264,6 +276,50 @@ export default function ManagerDashboard() {
   const dateFilteredCallOutcomes = callOutcomes.filter(outcome => isDateInRange(outcome.call_date || outcome.created_at));
   const dateFilteredCalls = calls.filter(call => isDateInRange(call.call_date || call.created_at));
   const dateFilteredAnalyses = analyses.filter(analysis => isDateInRange(analysis.created_at));
+
+  // Helper function for team performance date filtering
+  const isTeamPerfDateInRange = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    
+    const dateUTC = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+    const nowUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    
+    switch (teamPerfDateFilter) {
+      case 'today':
+        return dateUTC === nowUTC;
+      
+      case 'yesterday':
+        const yesterdayUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1);
+        return dateUTC === yesterdayUTC;
+      
+      case 'week':
+        const weekAgoUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6);
+        return dateUTC >= weekAgoUTC && dateUTC <= nowUTC;
+      
+      case 'month':
+        const monthAgoUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 29);
+        return dateUTC >= monthAgoUTC && dateUTC <= nowUTC;
+      
+      case 'custom':
+        if (!teamPerfCustomStartDate || !teamPerfCustomEndDate) return true;
+        const start = new Date(teamPerfCustomStartDate);
+        const end = new Date(teamPerfCustomEndDate);
+        const startUTC = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate());
+        const endUTC = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
+        return dateUTC >= startUTC && dateUTC <= endUTC;
+      
+      default:
+        return true;
+    }
+  };
+
+  // Filter calls for team performance page
+  const teamPerfFilteredCalls = calls.filter(call => {
+    const dateMatch = isTeamPerfDateInRange(call.call_date || call.created_at);
+    const employeeMatch = teamPerfEmployeeFilter === 'all' || call.employee_id === teamPerfEmployeeFilter;
+    return dateMatch && employeeMatch;
+  });
 
   // Handler for viewing call details
   const handleViewCallDetails = (call: any) => {
@@ -1223,6 +1279,14 @@ export default function ManagerDashboard() {
               Employees
             </Button>
             <Button 
+              variant={selectedTab === "team-performance" ? "accent" : "ghost"} 
+              className="w-full justify-start"
+              onClick={() => setSelectedTab("team-performance")}
+            >
+              <TrendingUp className="h-4 w-4" />
+              Team Performance
+            </Button>
+            <Button 
               variant={selectedTab === "productivity" ? "accent" : "ghost"} 
               className="w-full justify-start"
               onClick={() => setSelectedTab("productivity")}
@@ -1299,6 +1363,7 @@ export default function ManagerDashboard() {
             <TabsList className="hidden">
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="employees">Employees</TabsTrigger>
+              <TabsTrigger value="team-performance">Team Performance</TabsTrigger>
               <TabsTrigger value="productivity">Employee Productivity</TabsTrigger>
               <TabsTrigger value="leads">Leads</TabsTrigger>
               <TabsTrigger value="call-history">Call History</TabsTrigger>
@@ -1593,111 +1658,317 @@ export default function ManagerDashboard() {
                   </div>
                 </div>
               </div>
+            </TabsContent>
 
-              {/* Team Performance - Full Width */}
-              <div className="mt-8">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Team Performance</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left py-2 px-2 font-medium">Team Member</th>
-                            <th className="text-right py-2 px-2 font-medium">Total Calls</th>
-                            <th className="text-right py-2 px-2 font-medium">Contacted</th>
-                            <th className="text-right py-2 px-2 font-medium">Not Answered</th>
-                            <th className="text-right py-2 px-2 font-medium">Failed</th>
-                            <th className="text-right py-2 px-2 font-medium">Busy</th>
-                            <th className="text-right py-2 px-2 font-medium">Total Duration</th>
-                            <th className="text-right py-2 px-2 font-medium">Avg. Talk Time</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {employees.filter(emp => emp.user_id !== userRole?.user_id).map((emp) => {
-                            const empCalls = dateFilteredCalls.filter(c => c.employee_id === emp.user_id);
+            <TabsContent value="team-performance" className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold mb-2">Team Performance</h2>
+                <p className="text-muted-foreground mb-6">Detailed performance metrics for all team members</p>
+              </div>
+
+              {/* Filters Card */}
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="space-y-4">
+                    {/* Time Period Filter */}
+                    <div className="flex flex-wrap items-center gap-4">
+                      <Label className="font-semibold min-w-[100px]">Time Period:</Label>
+                      <div className="flex flex-wrap gap-2">
+                        <Button 
+                          variant={teamPerfDateFilter === 'today' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setTeamPerfDateFilter('today')}
+                        >
+                          Today
+                        </Button>
+                        <Button 
+                          variant={teamPerfDateFilter === 'yesterday' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setTeamPerfDateFilter('yesterday')}
+                        >
+                          Yesterday
+                        </Button>
+                        <Button 
+                          variant={teamPerfDateFilter === 'week' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setTeamPerfDateFilter('week')}
+                        >
+                          This Week
+                        </Button>
+                        <Button 
+                          variant={teamPerfDateFilter === 'month' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setTeamPerfDateFilter('month')}
+                        >
+                          This Month
+                        </Button>
+                        <Button 
+                          variant={teamPerfDateFilter === 'custom' ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setTeamPerfDateFilter('custom')}
+                        >
+                          Custom Range
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Custom Date Range */}
+                    {teamPerfDateFilter === 'custom' && (
+                      <div className="flex flex-wrap items-center gap-4">
+                        <Label className="font-semibold min-w-[100px]">Date Range:</Label>
+                        <div className="flex items-center gap-2">
+                          <Input 
+                            type="date" 
+                            value={teamPerfCustomStartDate}
+                            onChange={(e) => setTeamPerfCustomStartDate(e.target.value)}
+                            className="w-40"
+                          />
+                          <span>to</span>
+                          <Input 
+                            type="date" 
+                            value={teamPerfCustomEndDate}
+                            onChange={(e) => setTeamPerfCustomEndDate(e.target.value)}
+                            className="w-40"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Employee Filter */}
+                    <div className="flex flex-wrap items-center gap-4">
+                      <Label className="font-semibold min-w-[100px]">Employee:</Label>
+                      <Select value={teamPerfEmployeeFilter} onValueChange={setTeamPerfEmployeeFilter}>
+                        <SelectTrigger className="w-[250px]">
+                          <SelectValue placeholder="Select employee" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Employees</SelectItem>
+                          {employees.filter(emp => emp.user_id !== userRole?.user_id).map((emp) => (
+                            <SelectItem key={emp.id} value={emp.user_id}>
+                              {emp.full_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Sort Options */}
+                    <div className="flex flex-wrap items-center gap-4">
+                      <Label className="font-semibold min-w-[100px]">Sort By:</Label>
+                      <div className="flex gap-2">
+                        <Select value={teamPerfSortBy} onValueChange={(value: any) => setTeamPerfSortBy(value)}>
+                          <SelectTrigger className="w-[200px]">
+                            <SelectValue placeholder="Select sort field" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="name">Name</SelectItem>
+                            <SelectItem value="totalCalls">Total Calls</SelectItem>
+                            <SelectItem value="relevantCalls">Relevant Calls</SelectItem>
+                            <SelectItem value="irrelevantCalls">Irrelevant Calls</SelectItem>
+                            <SelectItem value="contacted">Contacted</SelectItem>
+                            <SelectItem value="notAnswered">Not Answered</SelectItem>
+                            <SelectItem value="failed">Failed</SelectItem>
+                            <SelectItem value="busy">Busy</SelectItem>
+                            <SelectItem value="duration">Total Duration</SelectItem>
+                            <SelectItem value="avgTime">Avg. Talk Time</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Select value={teamPerfSortOrder} onValueChange={(value: any) => setTeamPerfSortOrder(value)}>
+                          <SelectTrigger className="w-[150px]">
+                            <SelectValue placeholder="Order" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="asc">Ascending</SelectItem>
+                            <SelectItem value="desc">Descending</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Performance Table */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Performance Overview</CardTitle>
+                  <CardDescription>Call metrics and statistics for your team</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto rounded-lg shadow border bg-white">
+                    <table className="w-full">
+                      <thead className="sticky top-0 z-10 bg-gray-100">
+                        <tr className="border-b">
+                          <th className="text-left py-3 px-2 font-semibold whitespace-nowrap" title="Employee Name">Team Member</th>
+                          <th className="text-right py-3 px-2 font-semibold whitespace-nowrap" title="Total calls made">Total Calls</th>
+                          <th className="text-right py-3 px-2 font-semibold whitespace-nowrap" title="Calls > 30s">Relevant <span className='ml-1 text-xs bg-green-100 text-green-700 rounded px-1'>≥30s</span></th>
+                          <th className="text-right py-3 px-2 font-semibold whitespace-nowrap" title="Calls < 30s">Irrelevant <span className='ml-1 text-xs bg-gray-200 text-gray-700 rounded px-1'>&lt;30s</span></th>
+                          <th className="text-right py-3 px-2 font-semibold whitespace-nowrap" title="Completed calls"><span className='bg-green-100 text-green-700 rounded px-2 py-1 text-xs'>Contacted</span></th>
+                          <th className="text-right py-3 px-2 font-semibold whitespace-nowrap" title="No answer"><span className='bg-blue-100 text-blue-700 rounded px-2 py-1 text-xs'>Not Answered</span></th>
+                          <th className="text-right py-3 px-2 font-semibold whitespace-nowrap" title="Failed calls"><span className='bg-red-100 text-red-700 rounded px-2 py-1 text-xs'>Failed</span></th>
+                          <th className="text-right py-3 px-2 font-semibold whitespace-nowrap" title="Busy calls"><span className='bg-orange-100 text-orange-700 rounded px-2 py-1 text-xs'>Busy</span></th>
+                          <th className="text-right py-3 px-2 font-semibold whitespace-nowrap" title="Sum of durations (≥45s)">Total Duration</th>
+                          <th className="text-right py-3 px-2 font-semibold whitespace-nowrap" title="Average talk time (≥45s)">Avg. Talk Time</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(() => {
+                          // Filter and prepare employee data
+                          const filteredEmployees = employees.filter(emp => 
+                            emp.user_id !== userRole?.user_id && 
+                            (teamPerfEmployeeFilter === 'all' || emp.user_id === teamPerfEmployeeFilter)
+                          );
+
+                          // Calculate metrics for each employee
+                          const employeeData = filteredEmployees.map((emp) => {
+                            const empCalls = teamPerfFilteredCalls.filter(c => c.employee_id === emp.user_id);
+                            const relevantCalls = empCalls.filter(c => c.outcome === 'completed' && (c.exotel_duration || 0) >= 30);
+                            const irrelevantCalls = empCalls.filter(c => c.outcome === 'completed' && (c.exotel_duration || 0) < 30);
                             const contactedCalls = empCalls.filter(c => c.outcome === 'completed');
                             const notAnsweredCalls = empCalls.filter(c => c.outcome === 'no-answer');
                             const failedCalls = empCalls.filter(c => c.outcome === 'Failed');
                             const busyCalls = empCalls.filter(c => c.outcome === 'busy');
                             
-                            // Calculate total duration (in seconds) using exotel_duration, excluding calls below 45 seconds
                             const validCalls = empCalls.filter(call => (call.exotel_duration || 0) >= 45);
                             const totalDuration = validCalls.reduce((sum, call) => sum + (call.exotel_duration || 0), 0);
-                            // Format as HH:MM:SS
-                            const hours = Math.floor(totalDuration / 3600);
-                            const minutes = Math.floor((totalDuration % 3600) / 60);
-                            const seconds = totalDuration % 60;
-                            const formattedDuration = `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-                            
-                            // Calculate average talk time (in seconds) only for calls >= 45 seconds
                             const avgTalkTime = validCalls.length > 0 ? Math.round(totalDuration / validCalls.length) : 0;
-                            const avgMinutes = Math.floor(avgTalkTime / 60);
-                            const avgSeconds = avgTalkTime % 60;
-                            const formattedAvgTime = `${avgMinutes}:${avgSeconds.toString().padStart(2, '0')}`;
-                            
-                            return (
-                              <tr key={emp.id} className="border-b hover:bg-muted/50">
-                                <td className="py-3 px-2">{emp.full_name}</td>
-                                <td className="text-right py-3 px-2">{empCalls.length}</td>
-                                <td className="text-right py-3 px-2 text-green-600">{contactedCalls.length}</td>
-                                <td className="text-right py-3 px-2 text-blue-600">{notAnsweredCalls.length}</td>
-                                <td className="text-right py-3 px-2 text-red-600">{failedCalls.length}</td>
-                                <td className="text-right py-3 px-2 text-orange-600">{busyCalls.length}</td>
-                                <td className="text-right py-3 px-2 font-medium">{formattedDuration}</td>
-                                <td className="text-right py-3 px-2 font-medium">{formattedAvgTime}</td>
-                              </tr>
-                            );
-                          })}
-                          {employees.length > 0 && (() => {
-                            const totalCalls = dateFilteredCalls.length;
-                            const totalContacted = dateFilteredCalls.filter(c => c.outcome === 'completed').length;
-                            const totalNotAnswered = dateFilteredCalls.filter(c => c.outcome === 'no-answer').length;
-                            const totalFailed = dateFilteredCalls.filter(c => c.outcome === 'Failed').length;
-                            const totalBusy = dateFilteredCalls.filter(c => c.outcome === 'busy').length;
-                            
-                            // Calculate total duration across all employees using exotel_duration, excluding calls below 45 seconds
-                            const grandValidCalls = dateFilteredCalls.filter(call => (call.exotel_duration || 0) >= 45);
-                            const grandTotalDuration = grandValidCalls.reduce((sum, call) => sum + (call.exotel_duration || 0), 0);
-                            const grandHours = Math.floor(grandTotalDuration / 3600);
-                            const grandMinutes = Math.floor((grandTotalDuration % 3600) / 60);
-                            const grandSeconds = grandTotalDuration % 60;
-                            const grandFormattedDuration = `${grandHours}:${grandMinutes.toString().padStart(2, '0')}:${grandSeconds.toString().padStart(2, '0')}`;
-                            
-                            // Calculate average talk time across all calls >= 45 seconds
-                            const grandAvgTalkTime = grandValidCalls.length > 0 ? Math.round(grandTotalDuration / grandValidCalls.length) : 0;
-                            const grandAvgMinutes = Math.floor(grandAvgTalkTime / 60);
-                            const grandAvgSeconds = grandAvgTalkTime % 60;
-                            const grandFormattedAvgTime = `${grandAvgMinutes}:${grandAvgSeconds.toString().padStart(2, '0')}`;
-                            
-                            return (
-                              <tr className="border-t-2 font-bold bg-muted/30">
-                                <td className="py-3 px-2">Total</td>
-                                <td className="text-right py-3 px-2">{totalCalls}</td>
-                                <td className="text-right py-3 px-2 text-green-600">{totalContacted}</td>
-                                <td className="text-right py-3 px-2 text-blue-600">{totalNotAnswered}</td>
-                                <td className="text-right py-3 px-2 text-red-600">{totalFailed}</td>
-                                <td className="text-right py-3 px-2 text-orange-600">{totalBusy}</td>
-                                <td className="text-right py-3 px-2">{grandFormattedDuration}</td>
-                                <td className="text-right py-3 px-2">{grandFormattedAvgTime}</td>
-                              </tr>
-                            );
-                          })()}
-                          {employees.length === 0 && (
-                            <tr>
-                              <td colSpan={8} className="text-center py-8 text-muted-foreground">
-                                No team members found
-                              </td>
+
+                            return {
+                              emp,
+                              empCalls,
+                              relevantCalls,
+                              irrelevantCalls,
+                              contactedCalls,
+                              notAnsweredCalls,
+                              failedCalls,
+                              busyCalls,
+                              totalDuration,
+                              avgTalkTime
+                            };
+                          });
+
+                          // Sort employee data
+                          const sortedEmployeeData = [...employeeData].sort((a, b) => {
+                            let compareValue = 0;
+                            switch (teamPerfSortBy) {
+                              case 'name':
+                                compareValue = a.emp.full_name.localeCompare(b.emp.full_name);
+                                break;
+                              case 'totalCalls':
+                                compareValue = a.empCalls.length - b.empCalls.length;
+                                break;
+                              case 'relevantCalls':
+                                compareValue = a.relevantCalls.length - b.relevantCalls.length;
+                                break;
+                              case 'irrelevantCalls':
+                                compareValue = a.irrelevantCalls.length - b.irrelevantCalls.length;
+                                break;
+                              case 'contacted':
+                                compareValue = a.contactedCalls.length - b.contactedCalls.length;
+                                break;
+                              case 'notAnswered':
+                                compareValue = a.notAnsweredCalls.length - b.notAnsweredCalls.length;
+                                break;
+                              case 'failed':
+                                compareValue = a.failedCalls.length - b.failedCalls.length;
+                                break;
+                              case 'busy':
+                                compareValue = a.busyCalls.length - b.busyCalls.length;
+                                break;
+                              case 'duration':
+                                compareValue = a.totalDuration - b.totalDuration;
+                                break;
+                              case 'avgTime':
+                                compareValue = a.avgTalkTime - b.avgTalkTime;
+                                break;
+                            }
+                            return teamPerfSortOrder === 'asc' ? compareValue : -compareValue;
+                          });
+
+                          return (
+                            <>
+                              {sortedEmployeeData.map(({ emp, empCalls, relevantCalls, irrelevantCalls, contactedCalls, notAnsweredCalls, failedCalls, busyCalls, totalDuration, avgTalkTime }, idx) => {
+                                const hours = Math.floor(totalDuration / 3600);
+                                const minutes = Math.floor((totalDuration % 3600) / 60);
+                                const seconds = totalDuration % 60;
+                                const formattedDuration = `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                                const avgMinutes = Math.floor(avgTalkTime / 60);
+                                const avgSeconds = avgTalkTime % 60;
+                                const formattedAvgTime = `${avgMinutes}:${avgSeconds.toString().padStart(2, '0')}`;
+                                // Avatar initials
+                                const initials = emp.full_name?.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase();
+                                return (
+                                  <tr key={emp.id} className={`border-b transition-colors ${idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'} hover:bg-blue-50`}>
+                                    <td className="py-3 px-2 flex items-center gap-2">
+                                      <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-purple-100 text-purple-700 font-bold text-sm mr-2">{initials}</span>
+                                      <span>{emp.full_name}</span>
+                                    </td>
+                                    <td className="text-right py-3 px-2">{empCalls.length}</td>
+                                    <td className="text-right py-3 px-2"><span className="inline-block bg-green-100 text-green-700 rounded px-2 font-semibold">{relevantCalls.length}</span></td>
+                                    <td className="text-right py-3 px-2"><span className="inline-block bg-gray-200 text-gray-700 rounded px-2">{irrelevantCalls.length}</span></td>
+                                    <td className="text-right py-3 px-2"><span className="inline-block bg-green-100 text-green-700 rounded px-2">{contactedCalls.length}</span></td>
+                                    <td className="text-right py-3 px-2"><span className="inline-block bg-blue-100 text-blue-700 rounded px-2">{notAnsweredCalls.length}</span></td>
+                                    <td className="text-right py-3 px-2"><span className="inline-block bg-red-100 text-red-700 rounded px-2">{failedCalls.length}</span></td>
+                                    <td className="text-right py-3 px-2"><span className="inline-block bg-orange-100 text-orange-700 rounded px-2">{busyCalls.length}</span></td>
+                                    <td className="text-right py-3 px-2 font-medium">{formattedDuration}</td>
+                                    <td className="text-right py-3 px-2 font-medium">{formattedAvgTime}</td>
+                                  </tr>
+                                );
+                              })}
+                              {/* Only show totals row when viewing all employees */}
+                              {teamPerfEmployeeFilter === 'all' && sortedEmployeeData.length > 0 && (() => {
+                          const totalCalls = teamPerfFilteredCalls.length;
+                          const totalRelevant = teamPerfFilteredCalls.filter(c => c.outcome === 'completed' && (c.exotel_duration || 0) >= 30).length;
+                          const totalIrrelevant = teamPerfFilteredCalls.filter(c => c.outcome === 'completed' && (c.exotel_duration || 0) < 30).length;
+                          const totalContacted = teamPerfFilteredCalls.filter(c => c.outcome === 'completed').length;
+                          const totalNotAnswered = teamPerfFilteredCalls.filter(c => c.outcome === 'no-answer').length;
+                          const totalFailed = teamPerfFilteredCalls.filter(c => c.outcome === 'Failed').length;
+                          const totalBusy = teamPerfFilteredCalls.filter(c => c.outcome === 'busy').length;
+                          
+                          // Calculate total duration across all employees using exotel_duration, excluding calls below 45 seconds
+                          const grandValidCalls = teamPerfFilteredCalls.filter(call => (call.exotel_duration || 0) >= 45);
+                          const grandTotalDuration = grandValidCalls.reduce((sum, call) => sum + (call.exotel_duration || 0), 0);
+                          const grandHours = Math.floor(grandTotalDuration / 3600);
+                          const grandMinutes = Math.floor((grandTotalDuration % 3600) / 60);
+                          const grandSeconds = grandTotalDuration % 60;
+                          const grandFormattedDuration = `${grandHours}:${grandMinutes.toString().padStart(2, '0')}:${grandSeconds.toString().padStart(2, '0')}`;
+                          
+                          // Calculate average talk time across all calls >= 45 seconds
+                          const grandAvgTalkTime = grandValidCalls.length > 0 ? Math.round(grandTotalDuration / grandValidCalls.length) : 0;
+                          const grandAvgMinutes = Math.floor(grandAvgTalkTime / 60);
+                          const grandAvgSeconds = grandAvgTalkTime % 60;
+                          const grandFormattedAvgTime = `${grandAvgMinutes}:${grandAvgSeconds.toString().padStart(2, '0')}`;
+                          
+                          return (
+                            <tr className="border-t-2 font-bold bg-muted/30">
+                              <td className="py-3 px-2">Total</td>
+                              <td className="text-right py-3 px-2">{totalCalls}</td>
+                              <td className="text-right py-3 px-2 text-green-600">{totalRelevant}</td>
+                              <td className="text-right py-3 px-2 text-gray-500">{totalIrrelevant}</td>
+                              <td className="text-right py-3 px-2 text-green-600">{totalContacted}</td>
+                              <td className="text-right py-3 px-2 text-blue-600">{totalNotAnswered}</td>
+                              <td className="text-right py-3 px-2 text-red-600">{totalFailed}</td>
+                              <td className="text-right py-3 px-2 text-orange-600">{totalBusy}</td>
+                              <td className="text-right py-3 px-2">{grandFormattedDuration}</td>
+                              <td className="text-right py-3 px-2">{grandFormattedAvgTime}</td>
                             </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+                          );
+                        })()}
+                              {sortedEmployeeData.length === 0 && (
+                                <tr>
+                                  <td colSpan={10} className="text-center py-8 text-muted-foreground">
+                                    {teamPerfEmployeeFilter === 'all' ? 'No team members found' : 'No data available for selected employee'}
+                                  </td>
+                                </tr>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
             </TabsContent>
 
             <TabsContent value="employees" className="space-y-6">
@@ -2333,17 +2604,59 @@ export default function ManagerDashboard() {
                   <h2 className="text-2xl font-bold">Team Call History</h2>
                   <p className="text-muted-foreground mt-1">View and manage all team member calls</p>
                 </div>
-                <Select value={callDateFilter} onValueChange={setCallDateFilter}>
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Last 30 days" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Time</SelectItem>
-                    <SelectItem value="today">Today</SelectItem>
-                    <SelectItem value="week">Last 7 days</SelectItem>
-                    <SelectItem value="month">Last 30 days</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center gap-2">
+                  <Select value={callDateFilter} onValueChange={setCallDateFilter}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Last 30 days" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Time</SelectItem>
+                      <SelectItem value="today">Today</SelectItem>
+                      <SelectItem value="yesterday">Yesterday</SelectItem>
+                      <SelectItem value="week">Last 7 days</SelectItem>
+                      <SelectItem value="month">Last 30 days</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <Select value={selectedEmployeeFilter} onValueChange={setSelectedEmployeeFilter}>
+                    <SelectTrigger className="w-[220px]">
+                      <SelectValue placeholder="All Employees" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Employees</SelectItem>
+                      {employees.map(emp => (
+                        <SelectItem key={emp.id} value={emp.user_id}>{emp.full_name || emp.email}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Input
+                    className="w-[260px]"
+                    placeholder="Search lead or phone"
+                    value={callSearch}
+                    onChange={(e) => setCallSearch(e.target.value)}
+                  />
+                  <Select value={callSortBy} onValueChange={(v) => setCallSortBy(v as any)}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="Sort By" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="date">Date-Time</SelectItem>
+                      <SelectItem value="duration">Duration</SelectItem>
+                      <SelectItem value="agent">Agent</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <Select value={callSortOrder} onValueChange={(v) => setCallSortOrder(v as any)}>
+                    <SelectTrigger className="w-[120px]">
+                      <SelectValue placeholder="Order" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="desc">Descending</SelectItem>
+                      <SelectItem value="asc">Assending</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               {/* Filter Tabs */}
@@ -2434,6 +2747,22 @@ export default function ManagerDashboard() {
                         }
                       }
 
+                      // Filter by employee & search & date - Use date-only comparison to match dateFilteredCalls
+                      // Employee filter
+                      if (selectedEmployeeFilter && selectedEmployeeFilter !== 'all') {
+                        filteredCalls = filteredCalls.filter(call => call.employee_id === selectedEmployeeFilter);
+                      }
+
+                      // Search filter (lead name or contact)
+                      if (callSearch && callSearch.trim() !== '') {
+                        const q = callSearch.trim().toLowerCase();
+                        filteredCalls = filteredCalls.filter(call => {
+                          const leadName = (call.leads?.name || '').toLowerCase();
+                          const contact = (call.leads?.contact || '').toLowerCase();
+                          return leadName.includes(q) || contact.includes(q);
+                        });
+                      }
+
                       // Filter by date - Use date-only comparison to match dateFilteredCalls
                       const now = new Date();
                       if (callDateFilter === 'today') {
@@ -2444,6 +2773,16 @@ export default function ManagerDashboard() {
                           const callDate = new Date(call.call_date);
                           const callDateStr = callDate.toISOString().split('T')[0];
                           return callDateStr === todayDateStr;
+                        });
+                      } else if (callDateFilter === 'yesterday') {
+                        // Compare only the date part for yesterday (YYYY-MM-DD)
+                        const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+                        const yesterdayDateStr = yesterday.toISOString().split('T')[0];
+                        filteredCalls = filteredCalls.filter(call => {
+                          if (!call.call_date) return false;
+                          const callDate = new Date(call.call_date);
+                          const callDateStr = callDate.toISOString().split('T')[0];
+                          return callDateStr === yesterdayDateStr;
                         });
                       } else if (callDateFilter === 'week') {
                         // Monday to Friday of current week - MATCHES DASHBOARD
@@ -2468,6 +2807,29 @@ export default function ManagerDashboard() {
                         filteredCalls = filteredCalls.filter(call => {
                           const callTime = new Date(call.call_date || call.created_at).getTime();
                           return callTime >= monthStart.getTime() && callTime <= monthEnd.getTime();
+                        });
+                      }
+
+                      // Sorting
+                      if (callSortBy === 'date') {
+                        filteredCalls.sort((a: any, b: any) => {
+                          const at = new Date(a.call_date || a.created_at).getTime();
+                          const bt = new Date(b.call_date || b.created_at).getTime();
+                          return callSortOrder === 'asc' ? at - bt : bt - at;
+                        });
+                      } else if (callSortBy === 'duration') {
+                        filteredCalls.sort((a: any, b: any) => {
+                          const ad = a.exotel_duration || 0;
+                          const bd = b.exotel_duration || 0;
+                          return callSortOrder === 'asc' ? ad - bd : bd - ad;
+                        });
+                      } else if (callSortBy === 'agent') {
+                        filteredCalls.sort((a: any, b: any) => {
+                          const an = (a.employees?.full_name || '').toLowerCase();
+                          const bn = (b.employees?.full_name || '').toLowerCase();
+                          if (an < bn) return callSortOrder === 'asc' ? -1 : 1;
+                          if (an > bn) return callSortOrder === 'asc' ? 1 : -1;
+                          return 0;
                         });
                       }
 
@@ -2522,8 +2884,8 @@ export default function ManagerDashboard() {
                         return (
                           <TableRow key={call.id} className="hover:bg-gray-50">
                             <TableCell>
-                              <div className="font-medium">{call.leads?.name || 'Unknown'}</div>
-                              <div className="text-sm text-gray-500">{call.leads?.contact || 'N/A'}</div>
+                              <div className="font-medium"><b>{call.leads?.name || 'Unknown'}</b></div>
+                              
                             </TableCell>
                             <TableCell className="text-gray-600">
                               {call.leads?.contact || 'N/A'}
@@ -2552,7 +2914,7 @@ export default function ManagerDashboard() {
                               </span>
                             </TableCell>
                             <TableCell className="text-gray-600">
-                              <div className="flex items-center justify-end gap-2">
+                              <div className="flex items-center justify-end gap-4">
                                 <span className="text-sm">{call.employees?.full_name || 'Unknown'}</span>
                                 <Button size="sm" variant="outline" className="gap-2" onClick={() => handleViewCallDetails(call)}>
                                   <Eye className="h-4 w-4" />
@@ -2877,6 +3239,148 @@ export default function ManagerDashboard() {
                 </form>
               </DialogContent>
             </Dialog>
+
+              {/* Call Details Dialog */}
+              <Dialog open={isCallDetailsModalOpen} onOpenChange={setIsCallDetailsModalOpen}>
+                <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Call Details</DialogTitle>
+                    <DialogDescription>
+                      Basic information about this call
+                    </DialogDescription>
+                  </DialogHeader>
+                  {selectedCallForDetails && (
+                    <div className="space-y-6">
+                      <div className="border rounded-lg p-4 bg-blue-50">
+                        <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+                          <User className="h-5 w-5" />
+                          Candidate Details
+                        </h3>
+                        <div className="space-y-2">
+                          <div className="flex items-start gap-2">
+                            <span className="text-sm font-medium text-gray-600 min-w-[100px]">Name:</span>
+                            <span className="text-sm text-gray-900">{selectedCallForDetails.leads?.name || 'N/A'}</span>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <span className="text-sm font-medium text-gray-600 min-w-[100px]">Email:</span>
+                            <span className="text-sm text-gray-900">{selectedCallForDetails.leads?.email || 'N/A'}</span>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <span className="text-sm font-medium text-gray-600 min-w-[100px]">Contact:</span>
+                            <span className="text-sm text-gray-900">{selectedCallForDetails.leads?.contact || 'N/A'}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="border rounded-lg p-4 bg-purple-50">
+                        <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+                          <PhoneCall className="h-5 w-5" />
+                          Call Information
+                        </h3>
+                        <div className="space-y-2">
+                          <div className="flex items-start gap-2">
+                            <span className="text-sm font-medium text-gray-600 min-w-[100px]">Date:</span>
+                            <span className="text-sm text-gray-900">
+                              {selectedCallForDetails.call_date 
+                                ? new Date(selectedCallForDetails.call_date).toLocaleString('en-IN', { 
+                                    timeZone: 'Asia/Kolkata',
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    second: '2-digit'
+                                  })
+                                : 'N/A'}
+                            </span>
+                          </div>
+                          {selectedCallForDetails.exotel_duration && (
+                            <div className="flex items-start gap-2">
+                              <span className="text-sm font-medium text-gray-600 min-w-[100px]">Duration:</span>
+                              <span className="text-sm text-gray-900">
+                                {Math.floor(selectedCallForDetails.exotel_duration / 60)}m {selectedCallForDetails.exotel_duration % 60}s
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex items-start gap-2">
+                            <span className="text-sm font-medium text-gray-600 min-w-[100px]">Outcome:</span>
+                            <Badge variant={
+                              selectedCallForDetails.outcome === 'completed' ? 'default' :
+                              selectedCallForDetails.outcome === 'interested' ? 'default' :
+                              selectedCallForDetails.outcome === 'converted' ? 'default' :
+                              selectedCallForDetails.outcome === 'not_interested' ? 'destructive' :
+                              selectedCallForDetails.outcome === 'follow_up' ? 'secondary' :
+                              'outline'
+                            }>
+                              {selectedCallForDetails.outcome?.replace('_', ' ').toUpperCase()}
+                            </Badge>
+                          </div>
+                          {selectedCallForDetails.notes && (
+                            <div className="flex items-start gap-2">
+                              <span className="text-sm font-medium text-gray-600 min-w-[100px]">Notes:</span>
+                              <span className="text-sm text-gray-900">{selectedCallForDetails.notes}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {selectedCallForDetails.exotel_recording_url && (
+                        <div className="border rounded-lg p-4 bg-orange-50">
+                          <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+                            <Headphones className="h-5 w-5" />
+                            Recording
+                          </h3>
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-gray-600">URL:</span>
+                              <a 
+                                href={selectedCallForDetails.exotel_recording_url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                              >
+                                Open Recording
+                                <LinkIcon className="h-3 w-3" />
+                              </a>
+                            </div>
+                            <audio controls className="w-full mt-2">
+                              <source src={selectedCallForDetails.exotel_recording_url} type="audio/mpeg" />
+                              Your browser does not support the audio element.
+                            </audio>
+                          </div>
+                        </div>
+                      )}
+
+                      {selectedCallForDetails.next_follow_up && (
+                        <div className="border rounded-lg p-4 bg-yellow-50">
+                          <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
+                            <Calendar className="h-5 w-5" />
+                            Follow-up
+                          </h3>
+                          <div className="space-y-2">
+                            <div className="flex items-start gap-2">
+                              <span className="text-sm font-medium text-gray-600 min-w-[100px]">Date:</span>
+                              <span className="text-sm text-gray-900">
+                                {new Date(selectedCallForDetails.next_follow_up).toLocaleDateString('en-IN', {
+                                  year: 'numeric',
+                                  month: 'long',
+                                  day: 'numeric'
+                                })}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-2 mt-6">
+                    <Button variant="outline" onClick={() => setIsCallDetailsModalOpen(false)}>
+                      Close
+                    </Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
 
       {/* Add Lead Modal */}
       <AddLeadModal 

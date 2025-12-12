@@ -24,7 +24,7 @@ import {
 export default function EmployeeReportsPage() {
   const { userRole } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [timePeriod, setTimePeriod] = useState<'today' | 'week' | 'month' | 'custom'>('today');
+  const [timePeriod, setTimePeriod] = useState<'today' | 'yesterday' | 'week' | 'month' | 'custom'>('today');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [customFromDate, setCustomFromDate] = useState(new Date().toISOString().split('T')[0]);
   const [customToDate, setCustomToDate] = useState(new Date().toISOString().split('T')[0]);
@@ -51,6 +51,13 @@ export default function EmployeeReportsPage() {
       const todayStr = now.toISOString().split('T')[0];
       startDateStr = todayStr;
       endDateStr = todayStr;
+    } else if (timePeriod === 'yesterday') {
+      // Yesterday only
+      const yesterday = new Date(now);
+      yesterday.setDate(now.getDate() - 1);
+      const yStr = yesterday.toISOString().split('T')[0];
+      startDateStr = yStr;
+      endDateStr = yStr;
     } else if (timePeriod === 'week') {
       // This week (Monday to Friday)
       const dayOfWeek = now.getDay();
@@ -303,6 +310,7 @@ export default function EmployeeReportsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="today">Today</SelectItem>
+                  <SelectItem value="yesterday">Yesterday</SelectItem>
                   <SelectItem value="week">This Week</SelectItem>
                   <SelectItem value="month">This Month</SelectItem>
                   <SelectItem value="custom">Custom Range</SelectItem>

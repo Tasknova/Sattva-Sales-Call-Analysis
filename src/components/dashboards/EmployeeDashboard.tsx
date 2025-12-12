@@ -2808,7 +2808,12 @@ Please provide insights that are specific, actionable, and tailored to these met
                       className="bg-white shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:bg-gray-50"
                       onClick={() => {
                         setSelectedTab('calls');
-                        setCallDateFilter(dateFilter === 'today' ? 'today' : dateFilter === 'week' ? 'week' : dateFilter === 'month' ? 'month' : 'all');
+                        setCallDateFilter(
+                          dateFilter === 'today' ? 'today' :
+                          dateFilter === 'yesterday' ? 'yesterday' :
+                          dateFilter === 'week' ? 'week' :
+                          dateFilter === 'month' ? 'month' : 'all'
+                        );
                         setCallOutcomeFilter('Failed');
                       }}
                     >
@@ -2890,7 +2895,12 @@ Please provide insights that are specific, actionable, and tailored to these met
                   className="bg-white shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:bg-gray-50"
                   onClick={() => {
                     setSelectedTab('calls');
-                    setCallDateFilter(dateFilter === 'today' ? 'today' : dateFilter === 'week' ? 'week' : dateFilter === 'month' ? 'month' : 'all');
+                    setCallDateFilter(
+                      dateFilter === 'today' ? 'today' :
+                      dateFilter === 'yesterday' ? 'yesterday' :
+                      dateFilter === 'week' ? 'week' :
+                      dateFilter === 'month' ? 'month' : 'all'
+                    );
                     setCallOutcomeFilter('followup');
                   }}
                 >
@@ -3387,11 +3397,12 @@ Please provide insights that are specific, actionable, and tailored to these met
                     <SelectValue placeholder="Last 30 days" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Time</SelectItem>
-                    <SelectItem value="today">Today</SelectItem>
-                    <SelectItem value="week">Last 7 days</SelectItem>
-                    <SelectItem value="month">Last 30 days</SelectItem>
-                  </SelectContent>
+                      <SelectItem value="all">All Time</SelectItem>
+                      <SelectItem value="today">Today</SelectItem>
+                      <SelectItem value="yesterday">Yesterday</SelectItem>
+                      <SelectItem value="week">Last 7 days</SelectItem>
+                      <SelectItem value="month">Last 30 days</SelectItem>
+                    </SelectContent>
                 </Select>
               </div>
 
@@ -3493,6 +3504,17 @@ Please provide insights that are specific, actionable, and tailored to these met
                           const callDate = new Date(call.call_date);
                           const callDateStr = callDate.toISOString().split('T')[0];
                           return callDateStr === todayDateStr;
+                        });
+                      } else if (callDateFilter === 'yesterday') {
+                        // Yesterday only
+                        const yesterday = new Date(now);
+                        yesterday.setDate(now.getDate() - 1);
+                        const yStr = yesterday.toISOString().split('T')[0];
+                        filteredCalls = filteredCalls.filter(call => {
+                          if (!call.call_date) return false;
+                          const callDate = new Date(call.call_date);
+                          const callDateStr = callDate.toISOString().split('T')[0];
+                          return callDateStr === yStr;
                         });
                       } else if (callDateFilter === 'week') {
                         // Monday to Friday of current week - MATCHES DASHBOARD
