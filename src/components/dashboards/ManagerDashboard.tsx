@@ -29,10 +29,19 @@ import { ScatterChart, Scatter, BarChart, Bar, LineChart, Line, PieChart, Pie, X
 import { 
   Users, 
   UserPlus, 
+  UserCog,
+  BarChart3,
+  FileText,
+  History,
+  User,
+  Upload,
+  Download,
+  RefreshCw,
   Phone, 
   TrendingUp, 
   Settings, 
   Plus,
+  LogOut,
   Search,
   MoreHorizontal,
   Edit,
@@ -41,16 +50,6 @@ import {
   EyeOff,
   Copy,
   Check,
-  BarChart3,
-  PhoneCall,
-  User,
-  LogOut,
-  Upload,
-  Play,
-  Download,
-  History,
-  FileText,
-  UserCog,
   Building,
   AlertTriangle,
   Calendar,
@@ -192,6 +191,7 @@ export default function ManagerDashboard() {
   const [callSearch, setCallSearch] = useState<string>('');
   const [callSortBy, setCallSortBy] = useState<'date' | 'duration' | 'agent'>('date');
   const [callSortOrder, setCallSortOrder] = useState<'desc' | 'asc'>('desc');
+  const [callsChartEmployeeFilter, setCallsChartEmployeeFilter] = useState<string>('all');
   
   // Team Performance filters
   const [teamPerfDateFilter, setTeamPerfDateFilter] = useState<'today' | 'yesterday' | 'week' | 'month' | 'custom'>('week');
@@ -276,6 +276,69 @@ export default function ManagerDashboard() {
   const dateFilteredCallOutcomes = callOutcomes.filter(outcome => isDateInRange(outcome.call_date || outcome.created_at));
   const dateFilteredCalls = calls.filter(call => isDateInRange(call.call_date || call.created_at));
   const dateFilteredAnalyses = analyses.filter(analysis => isDateInRange(analysis.created_at));
+
+  // Calls over last 7 days (for line chart)
+  const callsLast7Days = useMemo(() => {
+    const now = new Date();
+    const days = [] as { date: string; count: number }[];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(now.getDate() - i);
+      const key = d.toISOString().split('T')[0];
+      const count = dateFilteredCalls.filter(c => (new Date(c.call_date || c.created_at).toISOString().split('T')[0]) === key && (callsChartEmployeeFilter === 'all' || c.employee_id === callsChartEmployeeFilter)).length;
+      days.push({ date: key, count });
+    }
+    return days;
+  }, [dateFilteredCalls, callsChartEmployeeFilter]);
+
+  // Recent call quality scores for selected employee
+  const recentQualityScores = useMemo(() => {
+    if (!callsChartEmployeeFilter || callsChartEmployeeFilter === 'all') return [] as { date: string; score: number }[];
+    const arr = dateFilteredAnalyses
+      .filter(a => (a.user_id || '') === callsChartEmployeeFilter && typeof a.call_quality_score !== 'undefined')
+      .map(a => ({ date: (new Date(a.created_at)).toISOString().split('T')[0], score: Number(a.call_quality_score) || 0 }));
+    // sort ascending by date
+    arr.sort((x, y) => new Date(x.date).getTime() - new Date(y.date).getTime());
+    // return last up to 10 entries
+    return arr.slice(Math.max(0, arr.length - 10));
+  }, [dateFilteredAnalyses, callsChartEmployeeFilter]);
+
+  // Calls per employee (bar chart)
+  const callsPerEmployee = useMemo(() => {
+    const map = new Map<string, { total: number; relevant: number }>();
+    const nameMap = new Map<string, string>();
+    employees.forEach(emp => { map.set(emp.user_id, { total: 0, relevant: 0 }); nameMap.set(emp.user_id, emp.full_name || emp.email || emp.user_id); });
+    dateFilteredCalls.forEach(c => {
+      const uid = c.employee_id;
+      const entry = map.get(uid) || { total: 0, relevant: 0 };
+      entry.total = (entry.total || 0) + 1;
+      const duration = Number(c.exotel_duration || 0);
+      if ((c.outcome || '').toLowerCase() === 'completed' && duration >= 30) {
+        entry.relevant = (entry.relevant || 0) + 1;
+      }
+      map.set(uid, entry);
+    });
+    const arr = Array.from(map.entries()).map(([user_id, stats]) => ({ user_id, name: nameMap.get(user_id) || user_id, total: stats.total, relevant: stats.relevant }));
+    return arr.sort((a, b) => b.total - a.total).slice(0, 10);
+  }, [dateFilteredCalls, employees]);
+
+  // Analyses status distribution (pie)
+  const analysesStatusCounts = useMemo(() => {
+    const counts: Record<string, number> = { completed: 0, processing: 0, pending: 0, failed: 0 };
+    dateFilteredAnalyses.forEach(a => {
+      const s = (a.status || 'pending') as string;
+      counts[s] = (counts[s] || 0) + 1;
+    });
+    return counts;
+  }, [dateFilteredAnalyses]);
+
+  // Summary: total calls in selected range and how many analyses exist
+  const analysesSummary = useMemo(() => {
+    const totalCalls = dateFilteredCalls.length;
+    const analyzed = dateFilteredAnalyses.length;
+    const percent = totalCalls ? Math.round((analyzed / totalCalls) * 100) : 0;
+    return { totalCalls, analyzed, percent };
+  }, [dateFilteredCalls, dateFilteredAnalyses]);
 
   // callDateFilteredCalls: driven by `callDateFilter` control used in Call History
   const callDateFilteredCalls = useMemo(() => {
@@ -1225,6 +1288,104 @@ export default function ManagerDashboard() {
     }
   };
 
+  // Export helpers for Team Performance CSV
+  const formatDuration = (secs: number) => {
+    const hours = Math.floor(secs / 3600);
+    const minutes = Math.floor((secs % 3600) / 60);
+    const seconds = Math.floor(secs % 60);
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const formatAvgTime = (secs: number) => {
+    const minutes = Math.floor(secs / 60);
+    const seconds = Math.floor(secs % 60);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+
+  const exportTeamPerformanceCSV = () => {
+    try {
+      const filteredEmployees = employees.filter(emp => 
+        emp.user_id !== userRole?.user_id && (teamPerfEmployeeFilter === 'all' || emp.user_id === teamPerfEmployeeFilter)
+      );
+
+      const rows = filteredEmployees.map((emp) => {
+        const empCalls = teamPerfFilteredCalls.filter(c => c.employee_id === emp.user_id);
+        const relevantCalls = empCalls.filter(c => c.outcome === 'completed' && (c.exotel_duration || 0) >= 30);
+        const irrelevantCalls = empCalls.filter(c => c.outcome === 'completed' && (c.exotel_duration || 0) < 30);
+        const contactedCalls = empCalls.filter(c => c.outcome === 'completed');
+        const notAnsweredCalls = empCalls.filter(c => c.outcome === 'no-answer');
+        const failedCalls = empCalls.filter(c => (c.outcome || '').toLowerCase() === 'failed');
+        const busyCalls = empCalls.filter(c => c.outcome === 'busy');
+        const validCalls = empCalls.filter(call => (call.exotel_duration || 0) >= 45);
+        const totalDuration = validCalls.reduce((sum, call) => sum + (Number(call.exotel_duration) || 0), 0);
+        const avgTalkTime = validCalls.length > 0 ? Math.round(totalDuration / validCalls.length) : 0;
+
+        return {
+          Name: emp.full_name || emp.email || emp.user_id,
+          TotalCalls: empCalls.length,
+          RelevantCalls: relevantCalls.length,
+          IrrelevantCalls: irrelevantCalls.length,
+          Contacted: contactedCalls.length,
+          NotAnswered: notAnsweredCalls.length,
+          Failed: failedCalls.length,
+          Busy: busyCalls.length,
+          TotalDuration: formatDuration(totalDuration),
+          AvgTalkTime: formatAvgTime(avgTalkTime),
+        } as Record<string, any>;
+      });
+
+      const headers = rows.length > 0 ? Object.keys(rows[0]) : ['Name','TotalCalls','RelevantCalls','IrrelevantCalls','Contacted','NotAnswered','Failed','Busy','TotalDuration','AvgTalkTime'];
+      const csvLines = [headers.join(',')];
+      rows.forEach(r => {
+        const line = headers.map(h => `"${String(r[h] ?? '').replace(/"/g, '""')}"`).join(',');
+        csvLines.push(line);
+      });
+
+      // Add totals row when viewing all employees
+      if (teamPerfEmployeeFilter === 'all') {
+        const totalCalls = teamPerfFilteredCalls.length;
+        const totalRelevant = teamPerfFilteredCalls.filter(c => c.outcome === 'completed' && (c.exotel_duration || 0) >= 30).length;
+        const totalIrrelevant = teamPerfFilteredCalls.filter(c => c.outcome === 'completed' && (c.exotel_duration || 0) < 30).length;
+        const totalContacted = teamPerfFilteredCalls.filter(c => c.outcome === 'completed').length;
+        const totalNotAnswered = teamPerfFilteredCalls.filter(c => c.outcome === 'no-answer').length;
+        const totalFailed = teamPerfFilteredCalls.filter(c => (c.outcome || '').toLowerCase() === 'failed').length;
+        const totalBusy = teamPerfFilteredCalls.filter(c => c.outcome === 'busy').length;
+        const grandValidCalls = teamPerfFilteredCalls.filter(call => (call.exotel_duration || 0) >= 45);
+        const grandTotalDuration = grandValidCalls.reduce((sum, call) => sum + (Number(call.exotel_duration) || 0), 0);
+        const grandAvgTalkTime = grandValidCalls.length > 0 ? Math.round(grandTotalDuration / grandValidCalls.length) : 0;
+
+        const totalsRow: Record<string, any> = {
+          Name: 'TOTAL',
+          TotalCalls: totalCalls,
+          RelevantCalls: totalRelevant,
+          IrrelevantCalls: totalIrrelevant,
+          Contacted: totalContacted,
+          NotAnswered: totalNotAnswered,
+          Failed: totalFailed,
+          Busy: totalBusy,
+          TotalDuration: formatDuration(grandTotalDuration),
+          AvgTalkTime: formatAvgTime(grandAvgTalkTime),
+        };
+        const totalsLine = headers.map(h => `"${String(totalsRow[h] ?? '').replace(/"/g, '""')}"`).join(',');
+        csvLines.push(totalsLine);
+      }
+
+      const csv = csvLines.join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `team_performance_${new Date().toISOString().slice(0,10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Export CSV failed', err);
+      toast({ title: 'Error', description: 'Failed to export CSV', variant: 'destructive' });
+    }
+  };
+
   // Filter analyses
   const filteredAnalyses = analyses.filter(analysis => {
     const leadName = analysis.recordings?.call_history?.leads?.name?.toLowerCase() || '';
@@ -1472,21 +1633,26 @@ export default function ManagerDashboard() {
                       </Button>
                     </div>
                     {dateRangeFilter === 'custom' && (
-                      <div className="flex items-center gap-2">
-                        <Input 
-                          type="date" 
-                          value={customStartDate}
-                          onChange={(e) => setCustomStartDate(e.target.value)}
-                          className="w-40"
-                        />
-                        <span>to</span>
-                        <Input 
-                          type="date" 
-                          value={customEndDate}
-                          onChange={(e) => setCustomEndDate(e.target.value)}
-                          className="w-40"
-                        />
-                      </div>
+                      <>
+                        <div className="flex items-center gap-2">
+                          <Input 
+                            type="date" 
+                            value={customStartDate}
+                            onChange={(e) => setCustomStartDate(e.target.value)}
+                            className="w-40"
+                          />
+                          <span>to</span>
+                          <Input 
+                            type="date" 
+                            value={customEndDate}
+                            onChange={(e) => setCustomEndDate(e.target.value)}
+                            className="w-40"
+                          />
+                        </div>
+                        <div className="text-center mt-2 text-sm font-medium">
+                          Total calls: {analysesSummary.totalCalls} — Analysed: {analysesSummary.analyzed} ({analysesSummary.percent}%)
+                        </div>
+                      </>
                     )}
                   </div>
                 </CardContent>
@@ -1633,6 +1799,42 @@ export default function ManagerDashboard() {
                     </CardContent>
                   </Card>
 
+                  {/* Calls Over Time (last 7 days) */}
+                  <Card>
+                    <CardHeader className="flex items-center justify-between">
+                        <div>
+                          <CardTitle>Calls Over Time (Last 7 days)</CardTitle>
+                          <CardDescription>Daily call volumes</CardDescription>
+                        </div>
+                        <div className="w-48">
+                          <Select value={callsChartEmployeeFilter} onValueChange={setCallsChartEmployeeFilter}>
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="All Employees" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Employees</SelectItem>
+                              {employees.map(emp => (
+                                <SelectItem key={emp.id} value={emp.user_id}>{emp.full_name || emp.email || emp.user_id}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </CardHeader>
+                    <CardContent>
+                      <div className="h-48">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={callsLast7Days}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis dataKey="date" tickFormatter={(d) => d.slice(5)} />
+                            <YAxis allowDecimals={false} />
+                            <ChartTooltip />
+                            <Line type="monotone" dataKey="count" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </CardContent>
+                  </Card>
+
                 </div>
 
                 {/* Right Column */}
@@ -1667,59 +1869,93 @@ export default function ManagerDashboard() {
                       </Card>
                     </div>
                   </div>
-
-                  {/* Calls Tracking */}
-                  <div>
-                    <h3 className="text-lg font-semibold mb-4">Calls Tracking</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                      <Card>
-                        <CardContent className="pt-6 text-center">
-                          <div className="text-4xl font-bold">{dateFilteredCalls.length}</div>
-                          <p className="text-sm text-muted-foreground mt-2">Total Calls</p>
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardContent className="pt-6 text-center">
-                          <div className="text-4xl font-bold text-green-600">
-                            {dateFilteredCalls.filter(c => c.outcome === 'completed').length}
-                          </div>
-                          <p className="text-sm text-muted-foreground mt-2">Contacted</p>
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardContent className="pt-6 text-center">
-                          <div className="text-4xl font-bold text-blue-600">
-                            {dateFilteredCalls.filter(c => c.outcome === 'no-answer').length}
-                          </div>
-                          <p className="text-sm text-muted-foreground mt-2">Follow-Ups</p>
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardContent className="pt-6 text-center">
-                          <div className="text-4xl font-bold text-red-600">
-                            {dateFilteredCalls.filter(c => c.outcome === 'Failed').length}
-                          </div>
-                          <p className="text-sm text-muted-foreground mt-2">Failed</p>
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardContent className="pt-6 text-center">
-                          <div className="text-4xl font-bold text-orange-600">
-                            {dateFilteredCalls.filter(c => c.outcome === 'busy').length}
-                          </div>
-                          <p className="text-sm text-muted-foreground mt-2">Busy</p>
-                        </CardContent>
-                      </Card>
+                  
+                    {/* Calls Tracking */}
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4">Calls Tracking</h3>
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        <Card>
+                          <CardContent className="pt-6 text-center">
+                            <div className="text-4xl font-bold">{dateFilteredCalls.length}</div>
+                            <p className="text-sm text-muted-foreground mt-2">Total Calls</p>
+                          </CardContent>
+                        </Card>
+                        <Card>
+                          <CardContent className="pt-6 text-center">
+                            <div className="text-4xl font-bold text-green-600">
+                              {dateFilteredCalls.filter(c => c.outcome === 'completed').length}
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-2">Contacted</p>
+                          </CardContent>
+                        </Card>
+                        <Card>
+                          <CardContent className="pt-6 text-center">
+                            <div className="text-4xl font-bold text-blue-600">
+                              {dateFilteredCalls.filter(c => c.outcome === 'no-answer').length}
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-2">Follow-Ups</p>
+                          </CardContent>
+                        </Card>
+                        <Card>
+                          <CardContent className="pt-6 text-center">
+                            <div className="text-4xl font-bold text-red-600">
+                              {dateFilteredCalls.filter(c => (c.outcome || '').toLowerCase() === 'failed').length}
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-2">Failed</p>
+                          </CardContent>
+                        </Card>
+                        <Card>
+                          <CardContent className="pt-6 text-center">
+                            <div className="text-4xl font-bold text-orange-600">
+                              {dateFilteredCalls.filter(c => c.outcome === 'busy').length}
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-2">Busy</p>
+                          </CardContent>
+                        </Card>
+                      </div>
                     </div>
-                  </div>
+
+                  {/* Recent Call Quality for selected employee */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Recent Call Quality</CardTitle>
+                      <CardDescription>Recent call quality scores for selected employee</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {callsChartEmployeeFilter === 'all' ? (
+                        <div className="text-sm text-muted-foreground">Select an employee in the "Calls Over Time" control to view recent call quality scores.</div>
+                      ) : recentQualityScores.length === 0 ? (
+                        <div className="text-sm text-muted-foreground">No analyses found for the selected employee in this period.</div>
+                      ) : (
+                        <div className="h-48">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={recentQualityScores} margin={{ left: 0, right: 0, top: 5, bottom: 5 }}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis dataKey="date" tickFormatter={(d) => d.slice(5)} />
+                              <YAxis domain={[0, 100]} allowDecimals={false} />
+                              <ChartTooltip />
+                              <Line type="monotone" dataKey="score" stroke="#f97316" strokeWidth={2} dot={{ r: 3 }} />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
                 </div>
               </div>
             </TabsContent>
 
             <TabsContent value="team-performance" className="space-y-6">
-              <div>
-                <h2 className="text-2xl font-bold mb-2">Team Performance</h2>
-                <p className="text-muted-foreground mb-6">Detailed performance metrics for all team members</p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold mb-2">Team Performance</h2>
+                  <p className="text-muted-foreground mb-6">Detailed performance metrics for all team members</p>
+                </div>
+                <div>
+                  <Button variant="outline" size="sm" onClick={exportTeamPerformanceCSV}>
+                    Export CSV
+                  </Button>
+                </div>
               </div>
 
               {/* Filters Card */}

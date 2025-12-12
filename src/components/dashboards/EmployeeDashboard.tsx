@@ -212,6 +212,9 @@ export default function EmployeeDashboard() {
   const [completedLeadIds, setCompletedLeadIds] = useState<Set<string>>(new Set());
   const [callOutcomeFilter, setCallOutcomeFilter] = useState<string>('all');
   const [callDateFilter, setCallDateFilter] = useState<string>('all');
+  const [callSearch, setCallSearch] = useState<string>('');
+  const [callSortBy, setCallSortBy] = useState<'date' | 'duration' | 'agent'>('date');
+  const [callSortOrder, setCallSortOrder] = useState<'desc' | 'asc'>('desc');
   const [currentTime, setCurrentTime] = useState(new Date());
   const [aiInsights, setAiInsights] = useState<Array<{title: string, message: string, type: 'success' | 'warning' | 'info' | 'error'}>>([]);
   const [isLoadingInsights, setIsLoadingInsights] = useState(false);
@@ -2196,9 +2199,39 @@ Please provide insights that are specific, actionable, and tailored to these met
         return t >= monthStart.getTime() && t <= monthEnd.getTime();
       });
     }
+    // Search filter
+    if (callSearch && callSearch.trim() !== '') {
+      const q = callSearch.trim().toLowerCase();
+      filtered = filtered.filter(call => {
+        const leadName = (call.leads?.name || '').toLowerCase();
+        const contact = (call.leads?.contact || '').toLowerCase();
+        const agent = (call.employee_id || '').toLowerCase();
+        return leadName.includes(q) || contact.includes(q) || agent.includes(q);
+      });
+    }
 
-    return filtered;
-  }, [calls, analyses, callOutcomeFilter, callDateFilter, customDateRange.startDate, customDateRange.endDate]);
+    // Sorting
+    const sorted = filtered.slice().sort((a, b) => {
+      if (callSortBy === 'date') {
+        const ta = new Date(a.call_date || a.created_at).getTime();
+        const tb = new Date(b.call_date || b.created_at).getTime();
+        return callSortOrder === 'asc' ? ta - tb : tb - ta;
+      } else if (callSortBy === 'duration') {
+        const da = a.exotel_duration || 0;
+        const db = b.exotel_duration || 0;
+        return callSortOrder === 'asc' ? da - db : db - da;
+      } else if (callSortBy === 'agent') {
+        const aa = (a.employee_id || '').toLowerCase();
+        const ab = (b.employee_id || '').toLowerCase();
+        if (aa < ab) return callSortOrder === 'asc' ? -1 : 1;
+        if (aa > ab) return callSortOrder === 'asc' ? 1 : -1;
+        return 0;
+      }
+      return 0;
+    });
+
+    return sorted;
+  }, [calls, analyses, callOutcomeFilter, callDateFilter, customDateRange.startDate, customDateRange.endDate, callSearch, callSortBy, callSortOrder]);
 
   // callDateFilteredCalls: driven by `callDateFilter` used in the Call History UI
   const callDateFilteredCalls = useMemo(() => {
@@ -3497,6 +3530,7 @@ Please provide insights that are specific, actionable, and tailored to these met
                 <div>
                   <h2 className="text-2xl font-bold">Call History</h2>
                 </div>
+                <div className="flex items-center gap-3">
                 <Select value={callDateFilter} onValueChange={setCallDateFilter}>
                   <SelectTrigger className="w-[180px]">
                     <SelectValue placeholder="Last 30 days" />
@@ -3509,6 +3543,32 @@ Please provide insights that are specific, actionable, and tailored to these met
                       <SelectItem value="month">Last 30 days</SelectItem>
                     </SelectContent>
                 </Select>
+                <Input
+                  placeholder="Search leads, contact or agent"
+                  value={callSearch}
+                  onChange={(e) => setCallSearch(e.target.value)}
+                  className="w-64"
+                />
+                <Select value={callSortBy} onValueChange={(v) => setCallSortBy(v as any)}>
+                  <SelectTrigger className="w-[150px]">
+                    <SelectValue placeholder="Sort By" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="date">Date</SelectItem>
+                    <SelectItem value="duration">Duration</SelectItem>
+                    <SelectItem value="agent">Agent</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={callSortOrder} onValueChange={(v) => setCallSortOrder(v as any)}>
+                  <SelectTrigger className="w-[100px]">
+                    <SelectValue placeholder="Order" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="desc">Desc</SelectItem>
+                    <SelectItem value="asc">Asc</SelectItem>
+                  </SelectContent>
+                </Select>
+                </div>
               </div>
 
               {/* Filter Tabs */}

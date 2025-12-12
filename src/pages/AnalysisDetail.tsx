@@ -256,13 +256,17 @@ export default function AnalysisDetail() {
               <div className="flex items-center justify-around py-4">
                 <div className="text-center">
                   <div className="text-3xl font-bold text-orange-500">
-                    {(() => {
-                      const objRaised = analysis.objections_detected || analysis.objections_raised || '';
-                      if (typeof objRaised === 'number') return objRaised;
-                      if (!objRaised) return 0;
-                      const count = String(objRaised).split('\n').filter(line => line.trim()).length;
-                      return count > 0 ? count : 0;
-                    })()}
+                      {(() => {
+                        // Prefer integer column `objections_raised`, fallback to parsing text `objections_detected` or `objections_raised` string
+                        const raisedRaw = analysis.objections_raised;
+                        if (typeof raisedRaw === 'number') return raisedRaw;
+                        // sometimes stored as string containing a number
+                        if (typeof raisedRaw === 'string' && /^\d+$/.test(raisedRaw.trim())) return Number(raisedRaw.trim());
+                        const detectedText = analysis.objections_detected || analysis.objections_raised || '';
+                        if (!detectedText) return 0;
+                        const count = String(detectedText).split('\n').filter(line => line.trim()).length;
+                        return count > 0 ? count : 0;
+                      })()}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">Raised</p>
                 </div>
@@ -273,10 +277,13 @@ export default function AnalysisDetail() {
                 <div className="text-center">
                   <div className="text-3xl font-bold text-green-500">
                     {(() => {
-                      const objHandled = analysis.objections_handled || analysis.objections_handeled || '';
-                      if (typeof objHandled === 'number') return objHandled;
-                      if (!objHandled) return 0;
-                      const count = String(objHandled).split('\n').filter(line => line.trim()).length;
+                      // Prefer integer column `objections_handled`, fallback to parsing text `objections_handeled` or `objections_handled` string
+                      const handledRaw = analysis.objections_handled;
+                      if (typeof handledRaw === 'number') return handledRaw;
+                      if (typeof handledRaw === 'string' && /^\d+$/.test(handledRaw.trim())) return Number(handledRaw.trim());
+                      const handledText = analysis.objections_handeled || analysis.objections_handled || '';
+                      if (!handledText) return 0;
+                      const count = String(handledText).split('\n').filter(line => line.trim()).length;
                       return count > 0 ? count : 0;
                     })()}
                   </div>
@@ -295,9 +302,9 @@ export default function AnalysisDetail() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm text-muted-foreground line-clamp-4">
+              <div className="text-sm text-muted-foreground">
                 {analysis.call_quality_score_reasoning || "This call demonstrated strong communication skills, proper adherence to protocol, and effective engagement with the candidate throughout the conversation."}
-              </p>
+              </div>
             </CardContent>
           </Card>
         </div>

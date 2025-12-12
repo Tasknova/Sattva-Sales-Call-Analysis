@@ -64,7 +64,7 @@ export default function EmployeeProfilePage({ onBack }: EmployeeProfilePageProps
         setProfile(employeeData);
         setFormData({
           full_name: employeeData.full_name || '',
-          contact_number: employeeData.contact_number || '',
+          contact_number: employeeData.contact_number || employeeData.phone || employeeData.contact || '',
         });
       }
     } catch (error) {
@@ -78,13 +78,24 @@ export default function EmployeeProfilePage({ onBack }: EmployeeProfilePageProps
     if (!user || !userRole) return;
 
     try {
+      // Build update payload dynamically to support different column names (contact_number / phone / contact)
+      const updatePayload: any = {
+        full_name: formData.full_name,
+        updated_at: new Date().toISOString(),
+      };
+      if (profile && Object.prototype.hasOwnProperty.call(profile, 'contact_number')) {
+        updatePayload.contact_number = formData.contact_number;
+      }
+      if (profile && Object.prototype.hasOwnProperty.call(profile, 'phone')) {
+        updatePayload.phone = formData.contact_number;
+      }
+      if (profile && Object.prototype.hasOwnProperty.call(profile, 'contact')) {
+        updatePayload.contact = formData.contact_number;
+      }
+
       const { error } = await supabase
         .from('employees')
-        .update({
-          full_name: formData.full_name,
-          contact_number: formData.contact_number,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq('user_id', user.id);
 
       if (error) {
@@ -96,6 +107,8 @@ export default function EmployeeProfilePage({ onBack }: EmployeeProfilePageProps
         ...prev,
         full_name: formData.full_name,
         contact_number: formData.contact_number,
+        phone: formData.contact_number,
+        contact: formData.contact_number,
         updated_at: new Date().toISOString(),
       } : null);
       
@@ -269,7 +282,7 @@ export default function EmployeeProfilePage({ onBack }: EmployeeProfilePageProps
                   </div>
                   <div className="flex items-center gap-2">
                     <Phone className="h-4 w-4 text-muted-foreground" />
-                    <span>{profile?.contact_number || 'Contact not set'}</span>
+                    <span>{profile?.contact_number || profile?.phone || profile?.contact || 'Contact not set'}</span>
                   </div>
                 </div>
               </CardContent>
