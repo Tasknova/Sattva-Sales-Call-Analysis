@@ -132,7 +132,7 @@ export default function SimpleAdminSignup({ onComplete, onBack }: SimpleAdminSig
                   <Sparkles className="h-6 w-6 text-white" />
                 </div>
                 <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                  Welcome to Tasknova
+                  Welcome to Sattva
                 </h1>
               </div>
               
@@ -226,7 +226,7 @@ export default function SimpleAdminSignup({ onComplete, onBack }: SimpleAdminSig
                   Create Your Account
                 </CardTitle>
                 <CardDescription className="text-lg text-gray-600">
-                  Join thousands of businesses already using Tasknova
+                  Join thousands of businesses already using Sattva
                 </CardDescription>
               </CardHeader>
               <CardContent>

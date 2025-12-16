@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense, lazy } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,9 +9,9 @@ import { useDashboardStats, useRecordings, useAnalyses, useDeleteRecording } fro
 import AddRecordingModal from "./AddRecordingModal";
 import AllLeadsPage from "./AllLeadsPage";
 import LeadGroupsPage from "./LeadGroupsPage";
-const AdminDashboard = lazy(() => import("./dashboards/AdminDashboard"));
-const ManagerDashboard = lazy(() => import("./dashboards/ManagerDashboard"));
-const EmployeeDashboard = lazy(() => import("./dashboards/EmployeeDashboard"));
+import AdminDashboard from "./dashboards/AdminDashboard";
+import ManagerDashboard from "./dashboards/ManagerDashboard";
+import EmployeeDashboard from "./dashboards/EmployeeDashboard";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 // import { useAnalysisNotifications } from "@/hooks/useAnalysisNotifications";
@@ -33,29 +33,17 @@ export default function Dashboard({ onShowProfile }: DashboardProps) {
   // Route to appropriate dashboard based on user role
   if (userRole?.role === 'admin') {
     console.log('Routing to AdminDashboard');
-    return (
-      <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading dashboard...</div>}>
-        <AdminDashboard />
-      </Suspense>
-    );
+    return <AdminDashboard />;
   }
-
+  
   if (userRole?.role === 'manager') {
     console.log('Routing to ManagerDashboard');
-    return (
-      <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading dashboard...</div>}>
-        <ManagerDashboard />
-      </Suspense>
-    );
+    return <ManagerDashboard />;
   }
-
+  
   if (userRole?.role === 'employee') {
     console.log('Routing to EmployeeDashboard');
-    return (
-      <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading dashboard...</div>}>
-        <EmployeeDashboard />
-      </Suspense>
-    );
+    return <EmployeeDashboard />;
   }
   
   // Fallback to original dashboard if role is not recognized
@@ -249,17 +237,16 @@ function OriginalDashboard({ onShowProfile }: DashboardProps) {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <img 
-              src="/logo.png" 
-              alt="Tasknova" 
+              src="/Sattva_logo.png" 
+              alt="Sattva" 
               className="h-10 w-auto cursor-pointer hover:opacity-80 transition-opacity"
               onError={(e) => {
-                e.currentTarget.src = "/logo2.png";
+                e.currentTarget.src = "/Sattva_logo.png";
               }}
               onClick={() => navigate('/')}
             />
             <div>
-              <h1 className="text-2xl font-bold text-foreground">Tasknova Voice Analysis</h1>
-              
+              <h1 className="text-2xl font-bold text-foreground">Sattva Voice Analysis</h1>
             </div>
           </div>
           <div className="flex items-center gap-3">

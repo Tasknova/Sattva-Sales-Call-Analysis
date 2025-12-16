@@ -62,11 +62,11 @@ export default function LandingPage({ onGetStarted, onLogin, onSignup }: Landing
             {/* Left side - Logo */}
             <div className="flex items-center">
               <img 
-                src="/logo2.png" 
-                alt="Tasknova" 
+                src="/Sattva_logo.png" 
+                alt="Sattva" 
                 className="h-10 w-auto cursor-pointer hover:opacity-80 transition-opacity"
                 onError={(e) => {
-                  e.currentTarget.src = "/logo.png";
+                  e.currentTarget.src = "/Sattva_logo.png";
                 }}
                 onClick={() => window.location.href = '/'}
               />
@@ -103,7 +103,7 @@ export default function LandingPage({ onGetStarted, onLogin, onSignup }: Landing
                 </Badge>
               </div>
               <h1 className="text-5xl font-bold leading-tight mb-6">
-                <span className="text-accent-blue">Tasknova</span>
+                <span className="text-accent-blue">Sattva</span>
                 <br />
                 Your Complete Sales 
                 <br />
@@ -522,7 +522,7 @@ export default function LandingPage({ onGetStarted, onLogin, onSignup }: Landing
                 💎 Premium Experience
               </Badge>
               <h2 className="text-4xl font-bold mb-6">
-                Why Teams <span className="text-transparent bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text">Love Tasknova</span>
+                Why Teams <span className="text-transparent bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text">Love Sattva</span>
               </h2>
               <p className="text-xl text-muted-foreground mb-8">
                 Join hundreds of high-performing teams who've revolutionized their sales with our intelligent platform.
@@ -624,22 +624,22 @@ export default function LandingPage({ onGetStarted, onLogin, onSignup }: Landing
           <div className="flex flex-col md:flex-row items-center justify-between">
             <div className="flex items-center space-x-3 mb-4 md:mb-0">
               <img 
-                src="/logo.png" 
-                alt="Tasknova" 
-                className="h-8 w-auto cursor-pointer hover:opacity-80 transition-opacity"
+                src="/Sattva_logo.png" 
+                alt="Sattva" 
+                className="h-10 w-auto cursor-pointer hover:opacity-80 transition-opacity"
                 onError={(e) => {
-                  e.currentTarget.src = "/logo2.png";
+                  e.currentTarget.src = "/Sattva_logo.png";
                 }}
                 onClick={() => window.location.href = '/'}
               />
               <div>
-                <p className="font-semibold text-foreground">Tasknova</p>
+                <p className="font-semibold text-foreground">Sattva</p>
                 <p className="text-sm text-muted-foreground">Complete Lead Management & AI Analysis Platform</p>
               </div>
             </div>
             <div className="text-center md:text-right">
               <p className="text-sm text-muted-foreground">
-                © 2025 Tasknova. All rights reserved.
+                © 2025 Sattva. All rights reserved.
               </p>
             </div>
           </div>

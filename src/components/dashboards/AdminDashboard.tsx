@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, lazy, Suspense } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { useNavigate } from "react-router-dom";
@@ -13,28 +13,26 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger 
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import CallHistoryManager from "@/components/CallHistoryManager";
-import AdminReportsPage from "@/components/AdminReportsPage";
 import ClientsPage from "@/components/ClientsPage";
-import JobsPage from "@/components/JobsPage";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { useClients, useJobs, useBulkAssignClients, useManagerClientAssignments, useUnassignClientFromManager } from "@/hooks/useSupabaseData";
 import { Checkbox } from "@/components/ui/checkbox";
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Legend, ResponsiveContainer } from "recharts";
-import { 
-  Building, 
-  Users, 
-  UserPlus, 
-  Phone, 
-  TrendingUp, 
-  Settings, 
+import {
+  Building,
+  Users,
+  UserPlus,
+  Phone,
+  TrendingUp,
+  Settings,
   Plus,
   Search,
   MoreHorizontal,
@@ -69,6 +67,11 @@ import {
   Download
 } from "lucide-react";
 import { Headphones, Link as LinkIcon } from 'lucide-react';
+
+const UsersTab = lazy(() => import('./tabs/UsersTab'));
+const JobsTab = lazy(() => import('./tabs/JobsTab'));
+const ReportsTab = lazy(() => import('./tabs/ReportsTab'));
+const SettingsTab = lazy(() => import('./tabs/SettingsTab'));
 
 interface User {
   id: string;
@@ -110,10 +113,10 @@ export default function AdminDashboard() {
   const { user, userRole, company, signOut } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
-  
+
   // Session timeout: 30 minutes for admin
   useSessionTimeout({ timeoutMinutes: 30, warningMinutes: 5 });
-  
+
   const [loading, setLoading] = useState(true);
   const [managers, setManagers] = useState<Manager[]>([]);
   const [employees, setEmployees] = useState<User[]>([]);
@@ -212,7 +215,7 @@ export default function AdminDashboard() {
   const [adminProfile, setAdminProfile] = useState<any>(null);
   const [companyProfile, setCompanyProfile] = useState<any>(null);
   const [phoneAssignments, setPhoneAssignments] = useState<any[]>([]);
-  
+
   // Date filter state
   const [dateFilter, setDateFilter] = useState<'today' | 'week' | 'month' | 'custom'>('month');
   const [customDateRange, setCustomDateRange] = useState({
@@ -220,7 +223,7 @@ export default function AdminDashboard() {
     endDate: ''
   });
   const [showCustomDatePicker, setShowCustomDatePicker] = useState(false);
-  
+
   const [newUser, setNewUser] = useState({
     email: "",
     password: "",
@@ -330,7 +333,7 @@ export default function AdminDashboard() {
 
       console.log('Fetched phone assignments:', data);
       setPhoneAssignments(data || []);
-      
+
       // Also update companySettings.from_numbers for backward compatibility
       setCompanySettings(prev => ({
         ...prev,
@@ -348,7 +351,7 @@ export default function AdminDashboard() {
     try {
       const { data, error } = await supabase
         .from('admins')
-        .select('id, user_id, full_name, email, phone, department, is_active, created_at, updated_at')
+        .select('*')
         .eq('user_id', user.id)
         .single();
 
@@ -428,7 +431,7 @@ export default function AdminDashboard() {
       // Fetch managers from managers table
       const { data: managersData, error: managersError } = await supabase
         .from('managers')
-        .select('id, user_id, company_id, full_name, email, department, password, is_active, created_at, updated_at')
+        .select('*')
         .eq('company_id', userRole.company_id)
         .eq('is_active', true);
 
@@ -436,7 +439,7 @@ export default function AdminDashboard() {
         console.error('Error fetching managers:', managersError);
         throw managersError;
       }
-      
+
       console.log('Fetched managers data:', managersData);
       console.log('Manager passwords:', managersData?.map(m => ({ name: m.full_name, password: m.password })));
 
@@ -444,16 +447,7 @@ export default function AdminDashboard() {
       const { data: employeesData, error: employeesError } = await supabase
         .from('employees')
         .select(`
-          id,
-          user_id,
-          company_id,
-          full_name,
-          email,
-          password,
-          manager_id,
-          is_active,
-          created_at,
-          updated_at,
+          *,
           manager:managers!manager_id(full_name, department)
         `)
         .eq('company_id', userRole.company_id)
@@ -514,7 +508,7 @@ export default function AdminDashboard() {
       // Fetch all leads for this company
       const { data: leadsData, error: leadsError } = await supabase
         .from('leads')
-        .select('id, user_id, assigned_to, name, email, contact, status, description, group_id, client_id, job_id, created_at, updated_at')
+        .select('*')
         .eq('company_id', userRole.company_id);
 
       if (leadsError) {
@@ -528,37 +522,37 @@ export default function AdminDashboard() {
 
         // Process leads using lookup maps (much faster than individual queries)
         const leadsWithAssignments = (leadsData || []).map((lead) => {
-            let assignedEmployee = null;
-            let assignedManager = null;
+          let assignedEmployee = null;
+          let assignedManager = null;
 
-            // Check if assigned_to exists
-            if (lead.assigned_to) {
-              // Check in managers first (by ID)
-              assignedManager = managersById.get(lead.assigned_to);
-              
-              if (!assignedManager) {
-                // Check employees by user_id or id
-                assignedEmployee = employeesByUserId.get(lead.assigned_to) || employeesById.get(lead.assigned_to);
-              }
+          // Check if assigned_to exists
+          if (lead.assigned_to) {
+            // Check in managers first (by ID)
+            assignedManager = managersById.get(lead.assigned_to);
+
+            if (!assignedManager) {
+              // Check employees by user_id or id
+              assignedEmployee = employeesByUserId.get(lead.assigned_to) || employeesById.get(lead.assigned_to);
             }
+          }
 
-            // Check if user_id exists (manager or creator) - only if not already assigned
-            if (lead.user_id && !assignedEmployee && !assignedManager) {
-              // Check in managers by user_id
-              assignedManager = managersByUserId.get(lead.user_id);
-              
-              if (!assignedManager) {
-                // Check in employees by user_id
-                assignedEmployee = employeesByUserId.get(lead.user_id);
-              }
+          // Check if user_id exists (manager or creator) - only if not already assigned
+          if (lead.user_id && !assignedEmployee && !assignedManager) {
+            // Check in managers by user_id
+            assignedManager = managersByUserId.get(lead.user_id);
+
+            if (!assignedManager) {
+              // Check in employees by user_id
+              assignedEmployee = employeesByUserId.get(lead.user_id);
             }
+          }
 
-            return {
-              ...lead,
-              assigned_employee: assignedEmployee,
-              assigned_manager: assignedManager,
-            };
-          });
+          return {
+            ...lead,
+            assigned_employee: assignedEmployee,
+            assigned_manager: assignedManager,
+          };
+        });
 
         setLeads(leadsWithAssignments);
         console.log('Fetched leads:', leadsWithAssignments);
@@ -567,7 +561,7 @@ export default function AdminDashboard() {
       // Fetch all lead groups for this company
       const { data: leadGroupsData, error: leadGroupsError } = await supabase
         .from('lead_groups')
-        .select('id, user_id, group_name, assigned_to, company_id, created_at, updated_at')
+        .select('*')
         .eq('company_id', userRole.company_id)
         .order('created_at', { ascending: false });
 
@@ -595,7 +589,7 @@ export default function AdminDashboard() {
       // Fetch employee daily productivity data
       const { data: productivityData, error: productivityError } = await supabase
         .from('employee_daily_productivity')
-        .select('id, employee_id, company_id, date, total_calls, completed_calls, follow_up_calls, not_answered_calls, created_at')
+        .select('*')
         .eq('company_id', userRole.company_id)
         .order('date', { ascending: false });
 
@@ -610,7 +604,7 @@ export default function AdminDashboard() {
       const employeeUserIds = employeesData?.map(emp => emp.user_id) || [];
       const { data: rawAnalysesData, error: analysesError } = await supabase
         .from('analyses')
-        .select(`id, recording_id, user_id, call_id, status, call_quality_score, sentiment_score, engagement_score, created_at, recordings ( id, file_name, recording_url, status, call_history_id )`)
+        .select(`*, recordings ( id, file_name, recording_url, status, call_history_id )`)
         .in('user_id', employeeUserIds);
 
       let analysesData = rawAnalysesData as any[] | null;
@@ -662,7 +656,7 @@ export default function AdminDashboard() {
     try {
       const { data, error } = await supabase
         .from('company_settings')
-        .select('id, company_id, caller_id, from_numbers, created_at, updated_at')
+        .select('*')
         .eq('company_id', userRole.company_id)
         .single();
 
@@ -713,7 +707,7 @@ export default function AdminDashboard() {
 
   const addFromNumber = async () => {
     const trimmedNumber = newFromNumber.trim();
-    
+
     if (!trimmedNumber) {
       toast({
         title: 'Error',
@@ -733,7 +727,7 @@ export default function AdminDashboard() {
       });
       return;
     }
-    
+
     if (!bulkAssignManagerId || bulkAssignManagerId === 'none') {
       toast({
         title: 'Error',
@@ -742,14 +736,14 @@ export default function AdminDashboard() {
       });
       return;
     }
-    
+
     if (!userRole?.company_id) return;
 
     try {
       // Check if number already exists
       const { data: existing, error: checkError } = await supabase
         .from('phone_numbers')
-        .select('id, company_id, phone_number, employee_id, manager_id, is_active, created_at, updated_at')
+        .select('*')
         .eq('company_id', userRole.company_id)
         .eq('phone_number', trimmedNumber);
 
@@ -819,7 +813,7 @@ export default function AdminDashboard() {
       setNewFromNumber("");
       setSelectedManagerFilter('none');
       setBulkAssignManagerId('');
-      
+
       // Refresh phone assignments
       await fetchPhoneAssignments();
     } catch (error: any) {
@@ -836,7 +830,7 @@ export default function AdminDashboard() {
     try {
       // Get the assignment to remove employee's assigned number
       const assignment = phoneAssignments.find(a => a.id === phoneAssignmentId);
-      
+
       if (assignment?.employee_id) {
         // Clear employee's assigned_phone_number
         await supabase
@@ -872,13 +866,13 @@ export default function AdminDashboard() {
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!userRole?.company_id) return;
 
     try {
       // Validate email uniqueness within the SAME role only
       const emailToCheck = newUser.email.toLowerCase().trim();
-      
+
       if (addUserType === 'manager') {
         // Check if email already exists as MANAGER
         const { data: existingManagers } = await supabase
@@ -918,13 +912,13 @@ export default function AdminDashboard() {
       // Note: Additional validation for admin emails will happen at the database level via triggers
 
       const demoUserId = crypto.randomUUID();
-      
+
       console.log('Creating user with ID:', demoUserId);
 
       if (addUserType === 'manager') {
         // Use custom department if "other" is selected, otherwise use the selected department
         const finalDepartment = newUser.department === 'other' ? customDepartment : newUser.department;
-        
+
         // Create manager
         const { error: managerError } = await supabase
           .from('managers')
@@ -1063,7 +1057,7 @@ export default function AdminDashboard() {
 
   const handleEditUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!selectedUser) return;
 
     try {
@@ -1083,7 +1077,7 @@ export default function AdminDashboard() {
           .eq('id', selectedUser.id);
 
         if (error) throw error;
-        
+
         // Update client assignments for managers in HR companies
         if (company?.industry?.toLowerCase() === 'hr') {
           // Get current assignments
@@ -1092,13 +1086,13 @@ export default function AdminDashboard() {
             .select('client_id')
             .eq('manager_id', selectedUser.id)
             .eq('is_active', true);
-          
+
           const currentClientIds = currentAssignments?.map(a => a.client_id) || [];
-          
+
           // Find clients to add and remove
           const clientsToAdd = selectedClientIds.filter(id => !currentClientIds.includes(id));
           const clientsToRemove = currentClientIds.filter(id => !selectedClientIds.includes(id));
-          
+
           // Add new assignments
           if (clientsToAdd.length > 0) {
             const newAssignments = clientsToAdd.map(client_id => ({
@@ -1107,14 +1101,14 @@ export default function AdminDashboard() {
               assigned_by: user?.id,
               assigned_at: new Date().toISOString()
             }));
-            
+
             const { error: addError } = await supabase
               .from('manager_client_assignments')
               .insert(newAssignments);
-            
+
             if (addError) throw addError;
           }
-          
+
           // Remove old assignments
           if (clientsToRemove.length > 0) {
             const { error: removeError } = await supabase
@@ -1122,7 +1116,7 @@ export default function AdminDashboard() {
               .delete()
               .eq('manager_id', selectedUser.id)
               .in('client_id', clientsToRemove);
-            
+
             if (removeError) throw removeError;
           }
         }
@@ -1245,7 +1239,7 @@ export default function AdminDashboard() {
       });
 
       setIsDeleteUserModalOpen(false);
-      
+
       // Optimized: Remove deleted user from state instead of refetching everything
       if (selectedUser.role === 'manager') {
         setManagers(prev => prev.filter(m => m.id !== selectedUser.id));
@@ -1257,7 +1251,7 @@ export default function AdminDashboard() {
           employees: m.employees.filter(e => e.id !== selectedUser.id)
         })));
       }
-      
+
       setSelectedUser(null);
     } catch (error: any) {
       console.error('Error deleting user:', error);
@@ -1292,7 +1286,7 @@ export default function AdminDashboard() {
       phone: user.phone || "",
       is_active: user.is_active,
     });
-    
+
     // Load current client assignments for managers
     if (user.role === 'manager') {
       try {
@@ -1301,7 +1295,7 @@ export default function AdminDashboard() {
           .select('client_id')
           .eq('manager_id', user.id)
           .eq('is_active', true);
-        
+
         if (!error && assignments) {
           setSelectedClientIds(assignments.map(a => a.client_id));
         }
@@ -1311,7 +1305,7 @@ export default function AdminDashboard() {
     } else {
       setSelectedClientIds([]);
     }
-    
+
     setIsEditUserModalOpen(true);
   };
 
@@ -1334,7 +1328,7 @@ export default function AdminDashboard() {
 
   const handleAddEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!userRole?.company_id) return;
 
     try {
@@ -1362,7 +1356,7 @@ export default function AdminDashboard() {
       // Note: Additional validation for admin emails will happen at the database level via triggers
 
       const demoUserId = crypto.randomUUID();
-      
+
       console.log('Creating employee with ID:', demoUserId);
 
       // Create employee
@@ -1473,7 +1467,7 @@ export default function AdminDashboard() {
         title: 'Copied!',
         description: `${type === 'email' ? 'Email' : 'Password'} copied to clipboard.`,
       });
-      
+
       // Reset the copied state after 2 seconds
       setTimeout(() => {
         setCopiedItems(prev => ({ ...prev, [type]: false }));
@@ -1514,14 +1508,14 @@ export default function AdminDashboard() {
 
   const handleAddLead = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!userRole?.company_id) return;
 
     try {
       // Determine user_id based on group or direct assignment
       let assignedUserId = null;
       let leadStatus = 'unassigned';
-      
+
       if (newLead.groupId && newLead.groupId !== "none") {
         // If a group is selected, get the manager assigned to that group
         const selectedGroup = leadGroups.find(g => g.id === newLead.groupId);
@@ -1680,7 +1674,7 @@ export default function AdminDashboard() {
 
     try {
       const idsToDelete = Array.from(selectedLeadIds);
-      
+
       const { error } = await supabase
         .from('leads')
         .delete()
@@ -1875,12 +1869,12 @@ export default function AdminDashboard() {
       ['Jane Smith', 'jane.smith@example.com', '9876543211', 'XYZ Ltd', 'Looking for senior developer role'],
       ['Mike Johnson', 'mike.j@example.com', '9876543212', 'Tech Solutions', 'Experienced in React and Node.js']
     ];
-    
+
     const csvContent = sampleData.map(row => row.join(',')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
-    
+
     link.setAttribute('href', url);
     link.setAttribute('download', 'sample_leads.csv');
     link.style.visibility = 'hidden';
@@ -1903,7 +1897,7 @@ export default function AdminDashboard() {
     reader.onload = (event) => {
       const text = event.target?.result as string;
       const lines = text.split('\n').filter(line => line.trim());
-      
+
       if (lines.length < 2) {
         toast({
           title: 'Error',
@@ -1923,7 +1917,7 @@ export default function AdminDashboard() {
 
         // Split by comma, handling quoted values
         const values = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g)?.map(v => v.replace(/^"|"$/g, '').trim()) || [];
-        
+
         if (values.length >= 3) {
           parsedLeads.push({
             name: values[0],
@@ -2098,7 +2092,7 @@ export default function AdminDashboard() {
       });
 
       setIsEditingProfile(false);
-      
+
       // Refresh admin profile data
       await fetchAdminProfile();
 
@@ -2157,7 +2151,7 @@ export default function AdminDashboard() {
       });
 
       setIsEditingCompany(false);
-      
+
       // Refresh company data
       await fetchCompanyData();
     } catch (error: any) {
@@ -2195,7 +2189,7 @@ export default function AdminDashboard() {
 
     try {
       setIsUpdating(true);
-      
+
       // Admin uses custom auth, update password in database using RPC
       const { error } = await supabase.rpc('update_admin_password', {
         p_user_id: user.id,
@@ -2212,7 +2206,7 @@ export default function AdminDashboard() {
         confirm_password: '',
       });
       setIsPasswordEditing(false);
-      
+
       toast({
         title: 'Password updated',
         description: 'Your password has been successfully updated.',
@@ -2235,10 +2229,10 @@ export default function AdminDashboard() {
     const leadName = analysis.recordings?.call_history?.leads?.name?.toLowerCase() || '';
     const employeeName = analysis.recordings?.call_history?.employees?.full_name || '';
     const employeeId = analysis.user_id || '';
-    
+
     const matchesSearch = analysisSearchTerm === "" || leadName.includes(analysisSearchTerm.toLowerCase());
     const matchesEmployee = selectedAnalysisEmployee === "all" || employeeId === selectedAnalysisEmployee;
-    
+
     let matchesProbability = selectedClosureProbability === "all";
     if (selectedClosureProbability === "high") {
       matchesProbability = (analysis.closure_probability || 0) >= 70;
@@ -2247,7 +2241,7 @@ export default function AdminDashboard() {
     } else if (selectedClosureProbability === "low") {
       matchesProbability = (analysis.closure_probability || 0) < 40;
     }
-    
+
     return matchesSearch && matchesEmployee && matchesProbability;
   });
 
@@ -2262,12 +2256,12 @@ export default function AdminDashboard() {
   const dateFilteredCalls = useMemo(() => {
     const now = new Date();
     const currentTime = now.getTime();
-    
+
     const filtered = calls.filter(call => {
       if (!call.created_at) return false;
       const date = new Date(call.created_at);
       const callTime = date.getTime();
-      
+
       if (dateFilter === 'today') {
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
@@ -2279,12 +2273,12 @@ export default function AdminDashboard() {
         const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // If Sunday, go back 6 days to Monday
         weekStart.setDate(now.getDate() - daysFromMonday);
         weekStart.setHours(0, 0, 0, 0);
-        
+
         // Get Friday of current week as end
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekStart.getDate() + 4); // Friday is 4 days after Monday
         weekEnd.setHours(23, 59, 59, 999);
-        
+
         return callTime >= weekStart.getTime() && callTime <= weekEnd.getTime();
       } else if (dateFilter === 'month') {
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -2300,7 +2294,7 @@ export default function AdminDashboard() {
       }
       return true; // Default: show all data
     });
-    
+
     return filtered;
   }, [calls, dateFilter, customDateRange.startDate, customDateRange.endDate]);
 
@@ -2379,14 +2373,14 @@ export default function AdminDashboard() {
   const dateFilteredAnalyses = useMemo(() => {
     const now = new Date();
     const currentTime = now.getTime();
-    
+
     return analyses.filter(analysis => {
       const createdAt = analysis.created_at || analysis.recordings?.call_history?.created_at;
       if (!createdAt) return false;
-      
+
       const date = new Date(createdAt);
       const analysisTime = date.getTime();
-      
+
       if (dateFilter === 'today') {
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
@@ -2398,12 +2392,12 @@ export default function AdminDashboard() {
         const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // If Sunday, go back 6 days to Monday
         weekStart.setDate(now.getDate() - daysFromMonday);
         weekStart.setHours(0, 0, 0, 0);
-        
+
         // Get Friday of current week as end
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekStart.getDate() + 4); // Friday is 4 days after Monday
         weekEnd.setHours(23, 59, 59, 999);
-        
+
         return analysisTime >= weekStart.getTime() && analysisTime <= weekEnd.getTime();
       } else if (dateFilter === 'month') {
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -2424,12 +2418,12 @@ export default function AdminDashboard() {
   const dateFilteredDailyProductivity = useMemo(() => {
     const now = new Date();
     const currentTime = now.getTime();
-    
+
     return dailyProductivity.filter(p => {
       if (!p.date) return false;
       const date = new Date(p.date);
       const prodTime = date.getTime();
-      
+
       if (dateFilter === 'today') {
         const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
         const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
@@ -2441,12 +2435,12 @@ export default function AdminDashboard() {
         const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // If Sunday, go back 6 days to Monday
         weekStart.setDate(now.getDate() - daysFromMonday);
         weekStart.setHours(0, 0, 0, 0);
-        
+
         // Get Friday of current week as end
         const weekEnd = new Date(weekStart);
         weekEnd.setDate(weekStart.getDate() + 4); // Friday is 4 days after Monday
         weekEnd.setHours(23, 59, 59, 999);
-        
+
         return prodTime >= weekStart.getTime() && prodTime <= weekEnd.getTime();
       } else if (dateFilter === 'month') {
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -2478,28 +2472,28 @@ export default function AdminDashboard() {
   // Calculate manager stats
   const getManagerStats = (manager: Manager) => {
     const managerEmployees = employees.filter(e => e.manager_id === manager.id);
-    const totalCalls = dateFilteredCalls.filter(c => 
+    const totalCalls = dateFilteredCalls.filter(c =>
       managerEmployees.some(e => e.user_id === c.employee_id)
     ).length;
-    
+
     // Only include calls with duration >= 30 seconds for average calculation
     const relevantCalls = dateFilteredCalls
-      .filter(c => 
-        managerEmployees.some(e => e.user_id === c.employee_id) && 
+      .filter(c =>
+        managerEmployees.some(e => e.user_id === c.employee_id) &&
         (c.exotel_duration || 0) >= 30
       );
-    
+
     const totalCallDurations = relevantCalls.reduce((sum, call) => sum + (call.exotel_duration || 0), 0);
-    
+
     const avgDuration = relevantCalls.length > 0 ? totalCallDurations / relevantCalls.length : 0;
     const avgMinutes = Math.floor(avgDuration / 60);
     const avgSeconds = Math.floor(avgDuration % 60);
 
     // Calculate closure probability from analyses
-    const managerAnalyses = dateFilteredAnalyses.filter(a => 
+    const managerAnalyses = dateFilteredAnalyses.filter(a =>
       managerEmployees.some(e => e.user_id === a.user_id)
     );
-    const avgClosureProbability = managerAnalyses.length > 0 
+    const avgClosureProbability = managerAnalyses.length > 0
       ? managerAnalyses.reduce((sum, a) => sum + (a.closure_probability || 0), 0) / managerAnalyses.length
       : 0;
 
@@ -2529,7 +2523,7 @@ export default function AdminDashboard() {
               <span className="font-medium">{user?.user_metadata?.full_name || 'Aarav Varma'}</span>
               <span className="text-muted-foreground">•</span>
               <Building className="h-4 w-4 text-muted-foreground" />
-              <span className="text-muted-foreground">{company?.name || 'Tasknova'}</span>
+              <span className="text-muted-foreground">{company?.name || 'Sattva'}</span>
             </div>
             <Button
               variant="outline"
@@ -2548,43 +2542,43 @@ export default function AdminDashboard() {
         {/* Sidebar */}
         <aside className="w-56 border-r bg-white p-4">
           <nav className="space-y-1">
-            <Button 
-              variant={activeSidebarItem === 'overview' ? 'default' : 'ghost'} 
+            <Button
+              variant={activeSidebarItem === 'overview' ? 'default' : 'ghost'}
               className="w-full justify-start text-sm"
               onClick={() => setActiveSidebarItem('overview')}
             >
               <Building className="h-4 w-4 mr-2" />
               Overview
             </Button>
-            <Button 
-              variant={activeSidebarItem === 'managers' ? 'accent' : 'ghost'} 
+            <Button
+              variant={activeSidebarItem === 'managers' ? 'accent' : 'ghost'}
               className="w-full justify-start"
               onClick={() => setActiveSidebarItem('managers')}
             >
               <Users className="h-4 w-4" />
               Managers
             </Button>
-            <Button 
-              variant={activeSidebarItem === 'employees' ? 'accent' : 'ghost'} 
+            <Button
+              variant={activeSidebarItem === 'employees' ? 'accent' : 'ghost'}
               className="w-full justify-start"
               onClick={() => setActiveSidebarItem('employees')}
             >
               <UserPlus className="h-4 w-4" />
               Employees
             </Button>
-            <Button 
-              variant={activeSidebarItem === 'leads' ? 'accent' : 'ghost'} 
+            <Button
+              variant={activeSidebarItem === 'leads' ? 'accent' : 'ghost'}
               className="w-full justify-start"
               onClick={() => setActiveSidebarItem('leads')}
             >
               <Phone className="h-4 w-4" />
               Leads
             </Button>
-            
+
             {/* HR-specific navigation */}
             {company?.industry?.toLowerCase() === 'hr' && (
               <>
-                <Button 
+                <Button
                   variant={activeSidebarItem === 'clients' ? 'accent' : 'ghost'}
                   className="w-full justify-start"
                   onClick={() => setActiveSidebarItem('clients')}
@@ -2592,7 +2586,7 @@ export default function AdminDashboard() {
                   <Building className="h-4 w-4" />
                   Clients
                 </Button>
-                <Button 
+                <Button
                   variant={activeSidebarItem === 'jobs' ? 'accent' : 'ghost'}
                   className="w-full justify-start"
                   onClick={() => setActiveSidebarItem('jobs')}
@@ -2602,41 +2596,41 @@ export default function AdminDashboard() {
                 </Button>
               </>
             )}
-            
-            <Button 
-              variant={activeSidebarItem === 'call-history' ? 'accent' : 'ghost'} 
+
+            <Button
+              variant={activeSidebarItem === 'call-history' ? 'accent' : 'ghost'}
               className="w-full justify-start"
               onClick={() => setActiveSidebarItem('call-history')}
             >
               <History className="h-4 w-4" />
               Call History
             </Button>
-            <Button 
-              variant={activeSidebarItem === 'analysis' ? 'accent' : 'ghost'} 
+            <Button
+              variant={activeSidebarItem === 'analysis' ? 'accent' : 'ghost'}
               className="w-full justify-start"
               onClick={() => setActiveSidebarItem('analysis')}
             >
               <BarChart3 className="h-4 w-4" />
               Analysis
             </Button>
-            <Button 
-              variant={activeSidebarItem === 'reports' ? 'accent' : 'ghost'} 
+            <Button
+              variant={activeSidebarItem === 'reports' ? 'accent' : 'ghost'}
               className="w-full justify-start"
               onClick={() => setActiveSidebarItem('reports')}
             >
               <FileText className="h-4 w-4" />
               Reports
             </Button>
-            <Button 
-              variant={activeSidebarItem === 'settings' ? 'accent' : 'ghost'} 
+            <Button
+              variant={activeSidebarItem === 'settings' ? 'accent' : 'ghost'}
               className="w-full justify-start"
               onClick={() => setActiveSidebarItem('settings')}
             >
               <Settings className="h-4 w-4" />
               Settings
             </Button>
-            <Button 
-              variant={activeSidebarItem === 'profile' ? 'accent' : 'ghost'} 
+            <Button
+              variant={activeSidebarItem === 'profile' ? 'accent' : 'ghost'}
               className="w-full justify-start"
               onClick={() => setActiveSidebarItem('profile')}
             >
@@ -2704,7 +2698,7 @@ export default function AdminDashboard() {
                       </Button>
                     </div>
                   </div>
-                  
+
                   {/* Custom Date Range Picker */}
                   {showCustomDatePicker && dateFilter === 'custom' && (
                     <div className="mt-4 pt-4 border-t border-gray-200">
@@ -2754,7 +2748,7 @@ export default function AdminDashboard() {
                   )}
                 </CardContent>
               </Card>
-              
+
               {/* Top Stats */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <Card className="bg-white shadow-sm">
@@ -2811,7 +2805,7 @@ export default function AdminDashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold text-green-700">
-                      {dateFilteredCalls.length > 0 
+                      {dateFilteredCalls.length > 0
                         ? Math.round((dateFilteredAnalyses.filter(a => (a.closure_probability || 0) >= 70).length / dateFilteredAnalyses.length) * 100) || 0
                         : 0}%
                     </div>
@@ -2892,11 +2886,10 @@ export default function AdminDashboard() {
                           <button
                             key={manager.id}
                             onClick={() => setSelectedManager(manager)}
-                            className={`w-full p-3 rounded-lg text-left transition-all ${
-                              isSelected 
-                                ? 'bg-blue-50 border border-blue-200' 
-                                : 'bg-white border border-gray-100 hover:bg-gray-50'
-                            }`}
+                            className={`w-full p-3 rounded-lg text-left transition-all ${isSelected
+                              ? 'bg-blue-50 border border-blue-200'
+                              : 'bg-white border border-gray-100 hover:bg-gray-50'
+                              }`}
                           >
                             <div className="flex items-center gap-2">
                               <User className="h-4 w-4 text-blue-500" />
@@ -3007,15 +3000,15 @@ export default function AdminDashboard() {
                             </span>
                           </div>
                           <div className="w-full bg-gray-100 rounded-full h-2">
-                            <div 
+                            <div
                               className="bg-green-500 h-2 rounded-full transition-all"
-                              style={{ 
-                                width: `${dateFilteredAnalyses.length > 0 ? (dateFilteredAnalyses.filter(a => (a.closure_probability || 0) >= 70).length / dateFilteredAnalyses.length) * 100 : 0}%` 
+                              style={{
+                                width: `${dateFilteredAnalyses.length > 0 ? (dateFilteredAnalyses.filter(a => (a.closure_probability || 0) >= 70).length / dateFilteredAnalyses.length) * 100 : 0}%`
                               }}
                             ></div>
                           </div>
                         </div>
-                        
+
                         <div>
                           <div className="flex items-center justify-between mb-1">
                             <span className="text-xs text-gray-600">Medium (40-69%)</span>
@@ -3024,15 +3017,15 @@ export default function AdminDashboard() {
                             </span>
                           </div>
                           <div className="w-full bg-gray-100 rounded-full h-2">
-                            <div 
+                            <div
                               className="bg-amber-500 h-2 rounded-full transition-all"
-                              style={{ 
-                                width: `${dateFilteredAnalyses.length > 0 ? (dateFilteredAnalyses.filter(a => (a.closure_probability || 0) >= 40 && (a.closure_probability || 0) < 70).length / dateFilteredAnalyses.length) * 100 : 0}%` 
+                              style={{
+                                width: `${dateFilteredAnalyses.length > 0 ? (dateFilteredAnalyses.filter(a => (a.closure_probability || 0) >= 40 && (a.closure_probability || 0) < 70).length / dateFilteredAnalyses.length) * 100 : 0}%`
                               }}
                             ></div>
                           </div>
                         </div>
-                        
+
                         <div>
                           <div className="flex items-center justify-between mb-1">
                             <span className="text-xs text-gray-600">Low (&lt;40%)</span>
@@ -3041,10 +3034,10 @@ export default function AdminDashboard() {
                             </span>
                           </div>
                           <div className="w-full bg-gray-100 rounded-full h-2">
-                            <div 
+                            <div
                               className="bg-red-500 h-2 rounded-full transition-all"
-                              style={{ 
-                                width: `${dateFilteredAnalyses.length > 0 ? (dateFilteredAnalyses.filter(a => (a.closure_probability || 0) < 40).length / dateFilteredAnalyses.length) * 100 : 0}%` 
+                              style={{
+                                width: `${dateFilteredAnalyses.length > 0 ? (dateFilteredAnalyses.filter(a => (a.closure_probability || 0) < 40).length / dateFilteredAnalyses.length) * 100 : 0}%`
                               }}
                             ></div>
                           </div>
@@ -3095,7 +3088,7 @@ export default function AdminDashboard() {
                         Export
                       </Button>
                     </div>
-                    
+
                     <div className="grid grid-cols-4 gap-4">
                       {/* Active Clients */}
                       <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
@@ -3123,7 +3116,7 @@ export default function AdminDashboard() {
                         </CardHeader>
                         <CardContent>
                           <div className="text-3xl font-bold text-green-700 mb-1">
-                            {jobs?.reduce((sum: number, j: any) => 
+                            {jobs?.reduce((sum: number, j: any) =>
                               sum + (j.positions_available || 0), 0) || 0}
                           </div>
                           <p className="text-xs text-gray-600">Available positions</p>
@@ -3157,7 +3150,7 @@ export default function AdminDashboard() {
                         <CardContent>
                           <div className="text-3xl font-bold text-amber-700 mb-1">
                             {(() => {
-                              const totalOpenings = jobs?.reduce((sum: number, j: any) => 
+                              const totalOpenings = jobs?.reduce((sum: number, j: any) =>
                                 sum + (j.positions_available || 0), 0) || 0;
                               const filled = dateFilteredCalls.filter(c => c.outcome === 'converted').length;
                               return Math.max(0, totalOpenings - filled);
@@ -3200,9 +3193,9 @@ export default function AdminDashboard() {
                                 const productivityDate = new Date(p.date);
                                 return productivityDate.getDay() === index;
                               });
-                              
+
                               const totalProfiles = dayProfiles.reduce((sum, p) => sum + (p.profiles_downloaded || 0), 0);
-                              
+
                               return {
                                 day: day.substring(0, 3),
                                 calls: dateFilteredCalls.filter(c => {
@@ -3215,16 +3208,16 @@ export default function AdminDashboard() {
                             return dayData;
                           })()} barGap={4}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                            <XAxis 
-                              dataKey="day" 
+                            <XAxis
+                              dataKey="day"
                               tick={{ fontSize: 12 }}
                               axisLine={{ stroke: '#d1d5db' }}
                             />
-                            <YAxis 
+                            <YAxis
                               tick={{ fontSize: 12 }}
                               axisLine={{ stroke: '#d1d5db' }}
                             />
-                            <ChartTooltip 
+                            <ChartTooltip
                               content={({ active, payload }) => {
                                 if (active && payload && payload.length) {
                                   return (
@@ -3317,16 +3310,15 @@ export default function AdminDashboard() {
                           if (hours > 0) return `${hours}h ago`;
                           return `${minutes}m ago`;
                         })();
-                        
+
                         return (
                           <div key={call.id} className="flex items-start gap-2 text-xs">
-                            <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${
-                              call.outcome === 'completed' ? 'bg-green-500' :
+                            <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${call.outcome === 'completed' ? 'bg-green-500' :
                               call.outcome === 'follow_up' ? 'bg-amber-500' :
-                              call.outcome === 'converted' ? 'bg-purple-500' :
-                              call.outcome === 'not_interested' ? 'bg-red-500' :
-                              'bg-gray-400'
-                            }`}></div>
+                                call.outcome === 'converted' ? 'bg-purple-500' :
+                                  call.outcome === 'not_interested' ? 'bg-red-500' :
+                                    'bg-gray-400'
+                              }`}></div>
                             <div className="flex-1 min-w-0">
                               <p className="text-gray-900 font-medium truncate">
                                 {employee?.profile?.full_name || 'Employee'} called {lead?.name || 'lead'}
@@ -3353,11 +3345,11 @@ export default function AdminDashboard() {
                     {employees.slice(0, 5).map((employee, index) => {
                       const employeeCalls = dateFilteredCalls.filter(c => c.employee_id === employee.user_id);
                       const employeeAnalyses = dateFilteredAnalyses.filter(a => a.user_id === employee.user_id);
-                      const avgClosure = employeeAnalyses.length > 0 
+                      const avgClosure = employeeAnalyses.length > 0
                         ? Math.round(employeeAnalyses.reduce((sum, a) => sum + (a.closure_probability || 0), 0) / employeeAnalyses.length)
                         : 0;
                       const manager = managers.find(m => m.id === employee.manager_id);
-                      
+
                       return (
                         <div key={employee.id} className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg hover:shadow-md transition-all">
                           <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-500 text-white font-bold text-lg mb-3 mx-auto">
@@ -3384,250 +3376,18 @@ export default function AdminDashboard() {
 
           {activeSidebarItem === 'managers' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold">Managers</h2>
-                  <p className="text-muted-foreground">Manage your team leaders and their responsibilities.</p>
-                </div>
-                <Button onClick={() => {
-                  console.log('Setting addUserType to manager');
-                  setAddUserType('manager');
-                  setShowPassword(false);
-                  // Use setTimeout to ensure state is updated before opening modal
-                  setTimeout(() => {
-                    console.log('Opening modal with addUserType:', 'manager');
-                    setIsAddUserModalOpen(true);
-                  }, 100); // Increased timeout to ensure state update
-                }}>
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Add Manager
-                </Button>
-              </div>
-              
-              {/* Search Bar */}
-              <div className="flex items-center gap-4">
-                <div className="flex-1">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                    <Input
-                      placeholder="Search managers..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                </div>
-                <div className="w-64">
-                  <Select value={selectedDepartmentFilter} onValueChange={setSelectedDepartmentFilter}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="All departments" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Departments</SelectItem>
-                      {DEPARTMENT_OPTIONS.map((dept) => (
-                        <SelectItem key={dept.value} value={dept.value}>
-                          {dept.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              
-              {managers.length === 0 ? (
-                <div className="text-center py-8">
-                  <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-muted-foreground">No managers found</p>
-                  <Button 
-                    className="mt-4" 
-                    onClick={() => setIsAddUserModalOpen(true)}
-                  >
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Add First Manager
-                  </Button>
-                </div>
-              ) : (
-                <div className="grid gap-4">
-                  {filteredManagers.map((manager) => (
-                    <div key={manager.user_id} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div className="flex items-center space-x-4">
-                        <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                          <Users className="h-5 w-5 text-green-500" />
-                        </div>
-                        <div>
-                          <h4 className="font-medium">{manager.profile?.full_name || `Manager ${manager.user_id.slice(0, 8)}`}</h4>
-                          <p className="text-sm text-muted-foreground">{manager.profile?.email || `ID: ${manager.user_id}`}</p>
-                          {!manager.profile?.full_name && (
-                            <p className="text-xs text-orange-600">Profile data missing - please update user</p>
-                          )}
-                          {manager.profile?.department && (
-                            <p className="text-xs text-blue-600 font-medium">{manager.profile.department}</p>
-                          )}
-                          <p className="text-xs text-muted-foreground">
-                            {manager.employees.length} employee{manager.employees.length !== 1 ? 's' : ''}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Badge variant="secondary">Manager</Badge>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleViewUser(manager)}>
-                              <Eye className="h-4 w-4 mr-2" />
-                              View Details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleEditUserClick(manager)}>
-                              <Edit className="h-4 w-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleShowCredentials(manager)}>
-                              <Shield className="h-4 w-4 mr-2" />
-                              View Credentials
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              onClick={() => handleDeleteUserClick(manager)}
-                              className="text-red-600"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <Suspense fallback={<div className="min-h-32 flex items-center justify-center">Loading users...</div>}>
+                <UsersTab initialView="managers" managers={managers} />
+              </Suspense>
             </div>
           )}
-
           {activeSidebarItem === 'employees' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-2xl font-bold">Employees</h2>
-                  <p className="text-muted-foreground">Manage your team members and their assignments.</p>
-                </div>
-                <Button onClick={() => {
-                  console.log('Opening separate employee modal');
-                  console.log('Setting isAddEmployeeModalOpen to true');
-                  setIsAddEmployeeModalOpen(true);
-                  console.log('Employee modal should now be open');
-                }}>
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Add Employee
-                </Button>
-              </div>
-              
-              {/* Search and Filter */}
-              <div className="flex items-center gap-4">
-                <div className="flex-1">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                    <Input
-                      placeholder="Search employees..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
-                </div>
-                <div className="w-64">
-                  <Label htmlFor="managerFilter">Filter by Manager</Label>
-                  <Select value={selectedManagerFilter} onValueChange={setSelectedManagerFilter}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="All managers" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All managers</SelectItem>
-                      {managers.map((manager) => (
-                        <SelectItem key={manager.id} value={manager.id}>
-                          {manager.profile?.full_name || `Manager ${manager.user_id.slice(0, 8)}`}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              
-              {employees.length === 0 ? (
-                <div className="text-center py-8">
-                  <UserPlus className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-muted-foreground">No employees found</p>
-                  <Button 
-                    className="mt-4" 
-                    onClick={() => {
-                      console.log('Add First Employee clicked - opening separate modal');
-                      setIsAddEmployeeModalOpen(true);
-                    }}
-                  >
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Add First Employee
-                  </Button>
-                </div>
-              ) : (
-                <div className="grid gap-4">
-                  {filteredEmployees.map((employee) => (
-                    <div key={employee.user_id} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div className="flex items-center space-x-4">
-                        <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                          <UserPlus className="h-5 w-5 text-purple-500" />
-                        </div>
-                        <div>
-                          <h4 className="font-medium">{employee.profile?.full_name || `Employee ${employee.user_id.slice(0, 8)}`}</h4>
-                          <p className="text-sm text-muted-foreground">{employee.profile?.email || `ID: ${employee.user_id}`}</p>
-                          {!employee.profile?.full_name && (
-                            <p className="text-xs text-orange-600">Profile data missing - please update user</p>
-                          )}
-                          <p className="text-xs text-muted-foreground">
-                            Managed by: {managers.find(m => m.id === employee.manager_id)?.profile?.full_name || 
-                                       managers.find(m => m.id === employee.manager_id)?.user_id?.slice(0, 8) || 'Unknown'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Badge variant="outline">Employee</Badge>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleViewUser(employee)}>
-                              <Eye className="h-4 w-4 mr-2" />
-                              View Details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleEditUserClick(employee)}>
-                              <Edit className="h-4 w-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleShowCredentials(employee)}>
-                              <Shield className="h-4 w-4 mr-2" />
-                              View Credentials
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              onClick={() => handleDeleteUserClick(employee)}
-                              className="text-red-600"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <Suspense fallback={<div className="min-h-32 flex items-center justify-center">Loading users...</div>}>
+                <UsersTab initialView="employees" employees={employees} />
+              </Suspense>
             </div>
           )}
-
 
           {activeSidebarItem === 'leads' && !isViewingGroupPage && (
             <div className="space-y-6">
@@ -3645,340 +3405,339 @@ export default function AdminDashboard() {
                     <Upload className="h-4 w-4 mr-2" />
                     Upload CSV
                   </Button>
-                <Button onClick={() => setIsAddLeadModalOpen(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Lead
-                </Button>
+                  <Button onClick={() => setIsAddLeadModalOpen(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Lead
+                  </Button>
                 </div>
               </div>
-              
+
               {/* Tabs for Leads and Lead Groups */}
               <Tabs value={leadsSection} onValueChange={(value) => setLeadsSection(value as 'leads' | 'groups')}>
                 <TabsList className="grid w-full grid-cols-2">
                   <TabsTrigger value="leads">All Leads</TabsTrigger>
                   <TabsTrigger value="groups">Lead Groups</TabsTrigger>
                 </TabsList>
-                
+
                 <TabsContent value="leads" className="space-y-6">
-              {/* Lead Stats Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
-                    <Phone className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{leads.length}</div>
-                    <p className="text-xs text-muted-foreground">
-                      All time leads
-                    </p>
-                  </CardContent>
-                </Card>
+                  {/* Lead Stats Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Total Leads</CardTitle>
+                        <Phone className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">{leads.length}</div>
+                        <p className="text-xs text-muted-foreground">
+                          All time leads
+                        </p>
+                      </CardContent>
+                    </Card>
 
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Active Leads</CardTitle>
-                    <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{leads.filter(lead => lead.status === 'active' || lead.status === 'assigned').length}</div>
-                    <p className="text-xs text-muted-foreground">
-                      Currently active
-                    </p>
-                  </CardContent>
-                </Card>
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Active Leads</CardTitle>
+                        <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">{leads.filter(lead => lead.status === 'active' || lead.status === 'assigned').length}</div>
+                        <p className="text-xs text-muted-foreground">
+                          Currently active
+                        </p>
+                      </CardContent>
+                    </Card>
 
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Converted</CardTitle>
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{leads.filter(lead => lead.status === 'converted').length}</div>
-                    <p className="text-xs text-muted-foreground">
-                      Successfully converted
-                    </p>
-                  </CardContent>
-                </Card>
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Converted</CardTitle>
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">{leads.filter(lead => lead.status === 'converted').length}</div>
+                        <p className="text-xs text-muted-foreground">
+                          Successfully converted
+                        </p>
+                      </CardContent>
+                    </Card>
 
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Conversion Rate</CardTitle>
-                    <Building className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {leads.length > 0 ? Math.round((leads.filter(lead => lead.status === 'converted').length / leads.length) * 100) : 0}%
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Lead to customer rate
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* All Leads Section - Now on Top */}
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <TrendingUp className="h-5 w-5" />
-                        All Leads ({leads.length})
-                  </CardTitle>
-                  <CardDescription>
-                        Complete list of all leads in your system
-                        {selectedLeadIds.size > 0 && (
-                          <span className="ml-2 text-blue-600 font-medium">
-                            • {selectedLeadIds.size} selected
-                          </span>
-                        )}
-                  </CardDescription>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {selectedLeadIds.size > 0 && (
-                        <>
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={handleBulkAssign}
-                          >
-                            <UserCog className="h-4 w-4 mr-2" />
-                            Assign to Manager
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={handleBulkGroup}
-                          >
-                            <Users className="h-4 w-4 mr-2" />
-                            Add to Group
-                          </Button>
-                          <Button 
-                            variant="destructive" 
-                            size="sm"
-                            onClick={handleBulkDelete}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete {selectedLeadIds.size}
-                          </Button>
-                        </>
-                      )}
-                      <div className="relative">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                        <Input
-                          placeholder="Search leads..."
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          className="pl-10 w-64"
-                        />
-                      </div>
-                      {company?.industry?.toLowerCase() === 'hr' && (
-                        <>
-                          <Select
-                            value={selectedClientFilter}
-                            onValueChange={setSelectedClientFilter}
-                          >
-                            <SelectTrigger className="w-48">
-                              <SelectValue placeholder="Filter by Client" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">All Clients</SelectItem>
-                              {Array.from(new Set(leads.filter(l => l.client_id).map(l => l.client_id))).map((clientId) => {
-                                const client = clients?.find(c => c.id === clientId);
-                                return client ? (
-                                  <SelectItem key={clientId} value={clientId}>
-                                    {client.name}
-                                  </SelectItem>
-                                ) : null;
-                              })}
-                            </SelectContent>
-                          </Select>
-                          <Select
-                            value={selectedJobFilter}
-                            onValueChange={setSelectedJobFilter}
-                          >
-                            <SelectTrigger className="w-48">
-                              <SelectValue placeholder="Filter by Job" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all">All Jobs</SelectItem>
-                              {Array.from(new Set(leads.filter(l => l.job_id).map(l => l.job_id))).filter(Boolean).map((jobId) => {
-                                const job = jobs?.find(j => j.id === jobId);
-                                const jobTitle = job?.title || jobId;
-                                return (
-                                  <SelectItem key={jobId} value={jobId}>
-                                    {jobTitle}
-                                  </SelectItem>
-                                );
-                              })}
-                            </SelectContent>
-                          </Select>
-                        </>
-                      )}
-                      <Select
-                        value={selectedEmployeeFilter}
-                        onValueChange={setSelectedEmployeeFilter}
-                      >
-                        <SelectTrigger className="w-48">
-                          <SelectValue placeholder="Filter by Employee" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Employees</SelectItem>
-                          <SelectItem value="unassigned">Unassigned</SelectItem>
-                          {employees.map((employee) => (
-                            <SelectItem key={employee.id} value={employee.id}>
-                              {employee.profile?.full_name || employee.full_name || employee.email}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Select
-                        value={selectedManagerFilterLeads}
-                        onValueChange={setSelectedManagerFilterLeads}
-                      >
-                        <SelectTrigger className="w-48">
-                          <SelectValue placeholder="Filter by Manager" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Managers</SelectItem>
-                          {managers.map((manager) => (
-                            <SelectItem key={manager.id} value={manager.id}>
-                              {manager.profile?.full_name || manager.full_name || manager.email}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    <Card>
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Conversion Rate</CardTitle>
+                        <Building className="h-4 w-4 text-muted-foreground" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">
+                          {leads.length > 0 ? Math.round((leads.filter(lead => lead.status === 'converted').length / leads.length) * 100) : 0}%
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Lead to customer rate
+                        </p>
+                      </CardContent>
+                    </Card>
                   </div>
-                </CardHeader>
-                <CardContent>
-                  {leads.length === 0 ? (
-                    <div className="text-center py-8">
-                      <Phone className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                      <p className="text-muted-foreground">No leads found</p>
-                      <Button className="mt-4" onClick={() => setIsAddLeadModalOpen(true)}>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add First Lead
-                      </Button>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {/* Select All Checkbox */}
-                      {leads.length > 0 && (
-                        <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg border-2 border-dashed">
-                          <input
-                            type="checkbox"
-                            checked={selectedLeadIds.size === leads.length && leads.length > 0}
-                            onChange={(e) => handleSelectAllLeads(e.target.checked)}
-                            className="h-4 w-4 rounded border-gray-300 cursor-pointer"
-                          />
-                          <Label className="text-sm font-medium cursor-pointer" onClick={() => handleSelectAllLeads(selectedLeadIds.size !== leads.length)}>
-                            Select All ({leads.length} leads)
-                          </Label>
-                          {selectedLeadIds.size > 0 && selectedLeadIds.size < leads.length && (
-                            <span className="text-xs text-muted-foreground">
-                              ({selectedLeadIds.size} of {leads.length} selected)
-                            </span>
+
+                  {/* All Leads Section - Now on Top */}
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle className="flex items-center gap-2">
+                            <TrendingUp className="h-5 w-5" />
+                            All Leads ({leads.length})
+                          </CardTitle>
+                          <CardDescription>
+                            Complete list of all leads in your system
+                            {selectedLeadIds.size > 0 && (
+                              <span className="ml-2 text-blue-600 font-medium">
+                                • {selectedLeadIds.size} selected
+                              </span>
+                            )}
+                          </CardDescription>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {selectedLeadIds.size > 0 && (
+                            <>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleBulkAssign}
+                              >
+                                <UserCog className="h-4 w-4 mr-2" />
+                                Assign to Manager
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleBulkGroup}
+                              >
+                                <Users className="h-4 w-4 mr-2" />
+                                Add to Group
+                              </Button>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={handleBulkDelete}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete {selectedLeadIds.size}
+                              </Button>
+                            </>
                           )}
-                        </div>
-                      )}
-                      {leads
-                        .filter(lead => {
-                          const matchesSearch = 
-                            lead.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                            lead.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                            lead.contact?.toLowerCase().includes(searchTerm.toLowerCase());
-                          const matchesClient = selectedClientFilter === 'all' || lead.client_id === selectedClientFilter;
-                          const matchesJob = selectedJobFilter === 'all' || lead.job_id === selectedJobFilter;
-                          const matchesEmployee = selectedEmployeeFilter === 'all' || 
-                            (selectedEmployeeFilter === 'unassigned' && !lead.assigned_to) ||
-                            lead.assigned_to === selectedEmployeeFilter ||
-                            employees.find(emp => emp.id === selectedEmployeeFilter)?.user_id === lead.assigned_to;
-                          const matchesManager = selectedManagerFilterLeads === 'all' ||
-                            lead.user_id === managers.find(m => m.id === selectedManagerFilterLeads)?.user_id;
-                          return matchesSearch && matchesClient && matchesJob && matchesEmployee && matchesManager;
-                        })
-                        .map((lead) => (
-                        <div key={lead.id} className={`flex items-center justify-between p-4 border rounded-lg transition-colors ${selectedLeadIds.has(lead.id) ? 'bg-blue-50 border-blue-300' : ''}`}>
-                          <div className="flex items-center space-x-4">
-                            <input
-                              type="checkbox"
-                              checked={selectedLeadIds.has(lead.id)}
-                              onChange={() => handleToggleLeadSelection(lead.id)}
-                              className="h-4 w-4 rounded border-gray-300 cursor-pointer"
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                              placeholder="Search leads..."
+                              value={searchTerm}
+                              onChange={(e) => setSearchTerm(e.target.value)}
+                              className="pl-10 w-64"
                             />
-                            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                              <Phone className="h-5 w-5 text-blue-500" />
-                            </div>
-                            <div>
-                              <h4 className="font-medium">{lead.name}</h4>
-                              <p className="text-sm text-muted-foreground">{lead.email}</p>
-                              <p className="text-sm text-muted-foreground">{lead.contact}</p>
-                              {company?.industry?.toLowerCase() === 'hr' && (
-                                <div className="flex gap-2 mt-1">
-                                  {lead.clients && (
-                                    <Badge variant="outline" className="text-xs">
-                                      <Building className="h-3 w-3 mr-1" />
-                                      {lead.clients.name}
-                                    </Badge>
-                                  )}
-                                  {lead.jobs && (
-                                    <Badge variant="outline" className="text-xs">
-                                      <Briefcase className="h-3 w-3 mr-1" />
-                                      {lead.jobs.title}
-                                    </Badge>
-                                  )}
-                                </div>
-                              )}
-                              {lead.assigned_employee ? (
-                                <p className="text-xs text-green-600">Assigned to Employee: {lead.assigned_employee.full_name}</p>
-                              ) : lead.assigned_manager ? (
-                                <p className="text-xs text-blue-600">Assigned to Manager: {lead.assigned_manager.full_name}</p>
-                              ) : (
-                                <p className="text-xs text-orange-600">Unassigned</p>
-                              )}
-                            </div>
                           </div>
-                          <div className="flex items-center space-x-2">
-                            <Badge variant="secondary">{lead.status}</Badge>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => handleViewLead(lead)}>
-                                  <Eye className="h-4 w-4 mr-2" />
-                                  View Details
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleEditLead(lead)}>
-                                  <Edit className="h-4 w-4 mr-2" />
-                                  Edit Lead
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => handleDeleteLead(lead)} className="text-red-600">
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete Lead
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
+                          {company?.industry?.toLowerCase() === 'hr' && (
+                            <>
+                              <Select
+                                value={selectedClientFilter}
+                                onValueChange={setSelectedClientFilter}
+                              >
+                                <SelectTrigger className="w-48">
+                                  <SelectValue placeholder="Filter by Client" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="all">All Clients</SelectItem>
+                                  {Array.from(new Set(leads.filter(l => l.client_id).map(l => l.client_id))).map((clientId) => {
+                                    const client = clients?.find(c => c.id === clientId);
+                                    return client ? (
+                                      <SelectItem key={clientId} value={clientId}>
+                                        {client.name}
+                                      </SelectItem>
+                                    ) : null;
+                                  })}
+                                </SelectContent>
+                              </Select>
+                              <Select
+                                value={selectedJobFilter}
+                                onValueChange={setSelectedJobFilter}
+                              >
+                                <SelectTrigger className="w-48">
+                                  <SelectValue placeholder="Filter by Job" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="all">All Jobs</SelectItem>
+                                  {Array.from(new Set(leads.filter(l => l.job_id).map(l => l.job_id))).filter(Boolean).map((jobId) => {
+                                    const job = jobs?.find(j => j.id === jobId);
+                                    const jobTitle = job?.title || jobId;
+                                    return (
+                                      <SelectItem key={jobId} value={jobId}>
+                                        {jobTitle}
+                                      </SelectItem>
+                                    );
+                                  })}
+                                </SelectContent>
+                              </Select>
+                            </>
+                          )}
+                          <Select
+                            value={selectedEmployeeFilter}
+                            onValueChange={setSelectedEmployeeFilter}
+                          >
+                            <SelectTrigger className="w-48">
+                              <SelectValue placeholder="Filter by Employee" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Employees</SelectItem>
+                              <SelectItem value="unassigned">Unassigned</SelectItem>
+                              {employees.map((employee) => (
+                                <SelectItem key={employee.id} value={employee.id}>
+                                  {employee.profile?.full_name || employee.full_name || employee.email}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={selectedManagerFilterLeads}
+                            onValueChange={setSelectedManagerFilterLeads}
+                          >
+                            <SelectTrigger className="w-48">
+                              <SelectValue placeholder="Filter by Manager" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Managers</SelectItem>
+                              {managers.map((manager) => (
+                                <SelectItem key={manager.id} value={manager.id}>
+                                  {manager.profile?.full_name || manager.full_name || manager.email}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
-                      ))}
-                      {leads.filter(lead => 
-                        lead.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        lead.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        lead.contact?.toLowerCase().includes(searchTerm.toLowerCase())
-                      ).length === 0 && searchTerm && (
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      {leads.length === 0 ? (
                         <div className="text-center py-8">
-                          <p className="text-muted-foreground">No leads found matching your search.</p>
+                          <Phone className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                          <p className="text-muted-foreground">No leads found</p>
+                          <Button className="mt-4" onClick={() => setIsAddLeadModalOpen(true)}>
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add First Lead
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {/* Select All Checkbox */}
+                          {leads.length > 0 && (
+                            <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg border-2 border-dashed">
+                              <input
+                                type="checkbox"
+                                checked={selectedLeadIds.size === leads.length && leads.length > 0}
+                                onChange={(e) => handleSelectAllLeads(e.target.checked)}
+                                className="h-4 w-4 rounded border-gray-300 cursor-pointer"
+                              />
+                              <Label className="text-sm font-medium cursor-pointer" onClick={() => handleSelectAllLeads(selectedLeadIds.size !== leads.length)}>
+                                Select All ({leads.length} leads)
+                              </Label>
+                              {selectedLeadIds.size > 0 && selectedLeadIds.size < leads.length && (
+                                <span className="text-xs text-muted-foreground">
+                                  ({selectedLeadIds.size} of {leads.length} selected)
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {leads
+                            .filter(lead => {
+                              const matchesSearch =
+                                (lead.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                (lead.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                (lead.contact || '').toLowerCase().includes(searchTerm.toLowerCase());
+                              const matchesClient = selectedClientFilter === 'all' || lead.client_id === selectedClientFilter;
+                              const matchesJob = selectedJobFilter === 'all' || lead.job_id === selectedJobFilter;
+                              const matchesEmployee = selectedEmployeeFilter === 'all' ||
+                                (selectedEmployeeFilter === 'unassigned' && !lead.assigned_to) ||
+                                lead.assigned_to === selectedEmployeeFilter ||
+                                employees.find(emp => emp.id === selectedEmployeeFilter)?.user_id === lead.assigned_to;
+                              const matchesManager = selectedManagerFilterLeads === 'all' ||
+                                lead.user_id === managers.find(m => m.id === selectedManagerFilterLeads)?.user_id;
+                              return matchesSearch && matchesClient && matchesJob && matchesEmployee && matchesManager;
+                            })
+                            .map((lead) => (
+                              <div key={lead.id} className={`flex items-center justify-between p-4 border rounded-lg transition-colors ${selectedLeadIds.has(lead.id) ? 'bg-blue-50 border-blue-300' : ''}`}>
+                                <div className="flex items-center space-x-4">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedLeadIds.has(lead.id)}
+                                    onChange={() => handleToggleLeadSelection(lead.id)}
+                                    className="h-4 w-4 rounded border-gray-300 cursor-pointer"
+                                  />
+                                  <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                    <Phone className="h-5 w-5 text-blue-500" />
+                                  </div>
+                                  <div>
+                                    <h4 className="font-medium">{lead.name}</h4>
+                                    <p className="text-sm text-muted-foreground">{lead.contact}</p>
+                                    {company?.industry?.toLowerCase() === 'hr' && (
+                                      <div className="flex gap-2 mt-1">
+                                        {lead.clients && (
+                                          <Badge variant="outline" className="text-xs">
+                                            <Building className="h-3 w-3 mr-1" />
+                                            {lead.clients.name}
+                                          </Badge>
+                                        )}
+                                        {lead.jobs && (
+                                          <Badge variant="outline" className="text-xs">
+                                            <Briefcase className="h-3 w-3 mr-1" />
+                                            {lead.jobs.title}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    )}
+                                    {lead.assigned_employee ? (
+                                      <p className="text-xs text-green-600">Assigned to Employee: {lead.assigned_employee.full_name}</p>
+                                    ) : lead.assigned_manager ? (
+                                      <p className="text-xs text-blue-600">Assigned to Manager: {lead.assigned_manager.full_name}</p>
+                                    ) : (
+                                      <p className="text-xs text-orange-600">Unassigned</p>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  <Badge variant="secondary">{lead.status}</Badge>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="icon">
+                                        <MoreHorizontal className="h-4 w-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem onClick={() => handleViewLead(lead)}>
+                                        <Eye className="h-4 w-4 mr-2" />
+                                        View Details
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => handleEditLead(lead)}>
+                                        <Edit className="h-4 w-4 mr-2" />
+                                        Edit Lead
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => handleDeleteLead(lead)} className="text-red-600">
+                                        <Trash2 className="h-4 w-4 mr-2" />
+                                        Delete Lead
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </div>
+                              </div>
+                            ))}
+                          {leads.filter(lead =>
+                            (lead.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            (lead.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            (lead.contact || '').toLowerCase().includes(searchTerm.toLowerCase())
+                          ).length === 0 && searchTerm && (
+                              <div className="text-center py-8">
+                                <p className="text-muted-foreground">No leads found matching your search.</p>
+                              </div>
+                            )}
                         </div>
                       )}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                    </CardContent>
+                  </Card>
                 </TabsContent>
 
                 <TabsContent value="groups" className="space-y-6">
@@ -4072,8 +3831,8 @@ export default function AdminDashboard() {
                     <Edit className="h-4 w-4 mr-2" />
                     Edit Group
                   </Button>
-                  <Button 
-                    variant="destructive" 
+                  <Button
+                    variant="destructive"
                     onClick={() => handleDeleteLeadGroup(selectedLeadGroup)}
                   >
                     <Trash2 className="h-4 w-4 mr-2" />
@@ -4104,7 +3863,7 @@ export default function AdminDashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-lg font-bold">
-                      {selectedLeadGroup.assigned_to ? 
+                      {selectedLeadGroup.assigned_to ?
                         managers.find(m => m.id === selectedLeadGroup.assigned_to)?.profile?.full_name || 'Manager' :
                         'Unassigned'}
                     </div>
@@ -4189,11 +3948,11 @@ export default function AdminDashboard() {
                   ) : (
                     <div className="space-y-4">
                       {leads
-                        .filter(lead => 
+                        .filter(lead =>
                           lead.group_id === selectedLeadGroup.id &&
-                          (lead.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          lead.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          lead.contact?.toLowerCase().includes(searchTerm.toLowerCase()))
+                          ((lead.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            (lead.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            (lead.contact || '').toLowerCase().includes(searchTerm.toLowerCase()))
                         )
                         .map((lead) => (
                           <div key={lead.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
@@ -4202,10 +3961,6 @@ export default function AdminDashboard() {
                                 <div>
                                   <h4 className="font-medium text-lg">{lead.name}</h4>
                                   <div className="flex items-center gap-4 mt-1">
-                                    <span className="text-sm text-muted-foreground flex items-center gap-1">
-                                      <Mail className="h-3 w-3" />
-                                      {lead.email}
-                                    </span>
                                     <span className="text-sm text-muted-foreground flex items-center gap-1">
                                       <Phone className="h-3 w-3" />
                                       {lead.contact}
@@ -4225,8 +3980,8 @@ export default function AdminDashboard() {
                             <div className="flex items-center gap-2">
                               <Badge variant={
                                 lead.status === 'converted' ? 'default' :
-                                lead.status === 'assigned' ? 'secondary' :
-                                lead.status === 'active' ? 'outline' : 'destructive'
+                                  lead.status === 'assigned' ? 'secondary' :
+                                    lead.status === 'active' ? 'outline' : 'destructive'
                               }>
                                 {lead.status}
                               </Badge>
@@ -4258,16 +4013,16 @@ export default function AdminDashboard() {
                             </div>
                           </div>
                         ))}
-                      {leads.filter(lead => 
+                      {leads.filter(lead =>
                         lead.group_id === selectedLeadGroup.id &&
-                        (lead.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        lead.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                        lead.contact?.toLowerCase().includes(searchTerm.toLowerCase()))
+                        ((lead.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (lead.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (lead.contact || '').toLowerCase().includes(searchTerm.toLowerCase()))
                       ).length === 0 && searchTerm && (
-                        <div className="text-center py-8">
-                          <p className="text-muted-foreground">No leads found matching your search.</p>
-                        </div>
-                      )}
+                          <div className="text-center py-8">
+                            <p className="text-muted-foreground">No leads found matching your search.</p>
+                          </div>
+                        )}
                     </div>
                   )}
                 </CardContent>
@@ -4375,28 +4130,26 @@ export default function AdminDashboard() {
                 <div className="flex space-x-8">
                   <button
                     onClick={() => setCallOutcomeFilter('all')}
-                    className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
-                      callOutcomeFilter === 'all'
-                        ? 'border-blue-600 text-blue-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700'
-                    }`}
+                    className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${callOutcomeFilter === 'all'
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                      }`}
                   >
                     All ({baseFilteredCalls.length})
                   </button>
                   <button
                     onClick={() => setCallOutcomeFilter('followup')}
-                    className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
-                      callOutcomeFilter === 'followup'
-                        ? 'border-blue-600 text-blue-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700'
-                    }`}
+                    className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${callOutcomeFilter === 'followup'
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                      }`}
                   >
                     Follow-up ({(() => {
                       const followUpCallIds = new Set(
                         analyses
                           .filter(a => {
-                            const hasFollowUp = a.follow_up_details && 
-                              a.follow_up_details.trim().length > 0 && 
+                            const hasFollowUp = a.follow_up_details &&
+                              a.follow_up_details.trim().length > 0 &&
                               !a.follow_up_details.toLowerCase().includes('irrelevant according to transcript');
                             return hasFollowUp && a.recordings?.call_history_id;
                           })
@@ -4408,11 +4161,10 @@ export default function AdminDashboard() {
                   </button>
                   <button
                     onClick={() => setCallOutcomeFilter('Failed')}
-                    className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${
-                      callOutcomeFilter === 'Failed'
-                        ? 'border-blue-600 text-blue-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700'
-                    }`}
+                    className={`pb-3 px-1 border-b-2 font-medium text-sm transition-colors ${callOutcomeFilter === 'Failed'
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700'
+                      }`}
                   >
                     Failed ({baseFilteredCalls.filter(c => c.outcome === 'Failed').length})
                   </button>
@@ -4440,8 +4192,8 @@ export default function AdminDashboard() {
                           const followUpCallIds = new Set(
                             analyses
                               .filter(a => {
-                                const hasFollowUp = a.follow_up_details && 
-                                  a.follow_up_details.trim().length > 0 && 
+                                const hasFollowUp = a.follow_up_details &&
+                                  a.follow_up_details.trim().length > 0 &&
                                   !a.follow_up_details.toLowerCase().includes('irrelevant according to transcript');
                                 return hasFollowUp && a.recordings?.call_history_id;
                               })
@@ -4454,25 +4206,25 @@ export default function AdminDashboard() {
                         }
                       }
 
-                        // Manager filter: when admin selects a manager, show calls for
-                        // employees under that manager. The DB may store manager references
-                        // either as manager.id or manager.user_id on employee.manager_id,
-                        // and call.employees?.manager_id may use either as well. Try both.
-                        if (selectedManagerFilter && selectedManagerFilter !== 'all') {
-                          const managerUserId = managers.find(m => m.id === selectedManagerFilter)?.user_id;
-                          filteredCalls = filteredCalls.filter(call => {
-                            const callManagerId = call.employees?.manager_id;
-                            if (!callManagerId) {
-                              // fallback: try to find the employee record and check its manager
-                              const emp = employees.find(e => e.user_id === call.employee_id || e.id === call.employee_id);
-                              if (!emp) return false;
-                              return emp.manager_id === selectedManagerFilter || (managerUserId && emp.manager_id === managerUserId);
-                            }
-                            return callManagerId === selectedManagerFilter || (managerUserId && callManagerId === managerUserId);
-                          });
-                        }
+                      // Manager filter: when admin selects a manager, show calls for
+                      // employees under that manager. The DB may store manager references
+                      // either as manager.id or manager.user_id on employee.manager_id,
+                      // and call.employees?.manager_id may use either as well. Try both.
+                      if (selectedManagerFilter && selectedManagerFilter !== 'all') {
+                        const managerUserId = managers.find(m => m.id === selectedManagerFilter)?.user_id;
+                        filteredCalls = filteredCalls.filter(call => {
+                          const callManagerId = call.employees?.manager_id;
+                          if (!callManagerId) {
+                            // fallback: try to find the employee record and check its manager
+                            const emp = employees.find(e => e.user_id === call.employee_id || e.id === call.employee_id);
+                            if (!emp) return false;
+                            return emp.manager_id === selectedManagerFilter || (managerUserId && emp.manager_id === managerUserId);
+                          }
+                          return callManagerId === selectedManagerFilter || (managerUserId && callManagerId === managerUserId);
+                        });
+                      }
 
-                        if (selectedEmployeeFilter && selectedEmployeeFilter !== 'all') {
+                      if (selectedEmployeeFilter && selectedEmployeeFilter !== 'all') {
                         filteredCalls = filteredCalls.filter(call => call.employee_id === selectedEmployeeFilter);
                       }
 
@@ -4608,9 +4360,9 @@ export default function AdminDashboard() {
                             <TableCell className="text-gray-600">
                               <div>{new Date(call.created_at).toLocaleDateString('en-GB')}</div>
                               <div className="text-sm text-gray-500">
-                                {new Date(call.created_at).toLocaleTimeString('en-GB', { 
-                                  hour: '2-digit', 
-                                  minute: '2-digit' 
+                                {new Date(call.created_at).toLocaleTimeString('en-GB', {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
                                 })}
                               </div>
                             </TableCell>
@@ -4684,16 +4436,16 @@ export default function AdminDashboard() {
                           <div className="flex items-start gap-2">
                             <span className="text-sm font-medium text-gray-600 min-w-[100px]">Date:</span>
                             <span className="text-sm text-gray-900">
-                              {selectedCallForDetails.call_date 
-                                ? new Date(selectedCallForDetails.call_date).toLocaleString('en-IN', { 
-                                    timeZone: 'Asia/Kolkata',
-                                    year: 'numeric',
-                                    month: 'short',
-                                    day: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                    second: '2-digit'
-                                  })
+                              {selectedCallForDetails.call_date
+                                ? new Date(selectedCallForDetails.call_date).toLocaleString('en-IN', {
+                                  timeZone: 'Asia/Kolkata',
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                  second: '2-digit'
+                                })
                                 : 'N/A'}
                             </span>
                           </div>
@@ -4709,11 +4461,11 @@ export default function AdminDashboard() {
                             <span className="text-sm font-medium text-gray-600 min-w-[100px]">Outcome:</span>
                             <Badge variant={
                               selectedCallForDetails.outcome === 'completed' ? 'default' :
-                              selectedCallForDetails.outcome === 'interested' ? 'default' :
-                              selectedCallForDetails.outcome === 'converted' ? 'default' :
-                              selectedCallForDetails.outcome === 'not_interested' ? 'destructive' :
-                              selectedCallForDetails.outcome === 'follow_up' ? 'secondary' :
-                              'outline'
+                                selectedCallForDetails.outcome === 'interested' ? 'default' :
+                                  selectedCallForDetails.outcome === 'converted' ? 'default' :
+                                    selectedCallForDetails.outcome === 'not_interested' ? 'destructive' :
+                                      selectedCallForDetails.outcome === 'follow_up' ? 'secondary' :
+                                        'outline'
                             }>
                               {selectedCallForDetails.outcome?.replace('_', ' ').toUpperCase()}
                             </Badge>
@@ -4736,9 +4488,9 @@ export default function AdminDashboard() {
                           <div className="space-y-2">
                             <div className="flex items-center gap-2">
                               <span className="text-sm font-medium text-gray-600">URL:</span>
-                              <a 
-                                href={selectedCallForDetails.exotel_recording_url} 
-                                target="_blank" 
+                              <a
+                                href={selectedCallForDetails.exotel_recording_url}
+                                target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-sm text-blue-600 hover:underline flex items-center gap-1"
                               >
@@ -4794,7 +4546,7 @@ export default function AdminDashboard() {
                 <h2 className="text-2xl font-bold">Call Analysis</h2>
                 <p className="text-muted-foreground">View all call analyses from your company.</p>
               </div>
-              
+
               {/* Filters */}
               <Card>
                 <CardHeader>
@@ -4865,48 +4617,51 @@ export default function AdminDashboard() {
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {filteredAnalyses.map((analysis) => (
-                        <div 
-                          key={analysis.id} 
-                          className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
-                          onClick={() => window.open(`/analysis/${analysis.id}`, '_blank')}
-                        >
-                          <div className="flex items-center space-x-3 flex-1">
-                            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                              <BarChart3 className="h-5 w-5 text-blue-600" />
-                            </div>
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-1">
-                                <p className="font-medium">
-                                  Call with {analysis.recordings?.call_history?.leads?.name || 'Unknown Lead'}
-                                </p>
-                                <Badge variant="outline" className="text-xs">
-                                  <User className="h-3 w-3 mr-1" />
-                                  {analysis.recordings?.call_history?.employees?.full_name || 'Unknown Employee'}
-                                </Badge>
+                      {filteredAnalyses.map((analysis) => {
+                        const callHistory = analysis.recordings?.call_history;
+                        const leadName = callHistory?.leads?.name || leads.find((l: any) => l.id === callHistory?.lead_id)?.name || 'Unknown Lead';
+                        const employeeName = callHistory?.employees?.full_name || employees.find((e: any) => e.id === callHistory?.employee_id)?.full_name || employees.find((e: any) => e.user_id === callHistory?.employee_id)?.full_name || 'Unknown Employee';
+
+                        return (
+                          <div
+                            key={analysis.id}
+                            className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                            onClick={() => window.open(`/analysis/${analysis.id}`, '_blank')}
+                          >
+                            <div className="flex items-center space-x-3 flex-1">
+                              <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                                <BarChart3 className="h-5 w-5 text-blue-600" />
                               </div>
-                              <p className="text-sm text-muted-foreground">
-                                {new Date(analysis.created_at).toLocaleDateString()}
-                              </p>
-                              {analysis.closure_probability && (
-                                <div className="flex items-center gap-2 mt-1">
-                                  <Badge 
-                                    variant="outline" 
-                                    className={`text-xs ${
-                                      analysis.closure_probability >= 70 ? 'bg-green-50 text-green-700 border-green-300' :
-                                      analysis.closure_probability >= 40 ? 'bg-yellow-50 text-yellow-700 border-yellow-300' :
-                                      'bg-red-50 text-red-700 border-red-300'
-                                    }`}
-                                  >
-                                    Closure: {analysis.closure_probability}%
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <p className="font-medium">Call with {leadName}</p>
+                                  <Badge variant="outline" className="text-xs">
+                                    <User className="h-3 w-3 mr-1" />
+                                    {employeeName}
                                   </Badge>
                                 </div>
-                              )}
+                                <p className="text-sm text-muted-foreground">
+                                  {new Date(analysis.created_at).toLocaleDateString()}
+                                </p>
+                                {analysis.closure_probability && (
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <Badge
+                                      variant="outline"
+                                      className={`text-xs ${analysis.closure_probability >= 70 ? 'bg-green-50 text-green-700 border-green-300' :
+                                        analysis.closure_probability >= 40 ? 'bg-yellow-50 text-yellow-700 border-yellow-300' :
+                                          'bg-red-50 text-red-700 border-red-300'
+                                        }`}
+                                    >
+                                      Closure: {analysis.closure_probability}%
+                                    </Badge>
+                                  </div>
+                                )}
+                              </div>
                             </div>
+                            <Eye className="h-5 w-5 text-muted-foreground" />
                           </div>
-                          <Eye className="h-5 w-5 text-muted-foreground" />
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </CardContent>
@@ -4915,196 +4670,29 @@ export default function AdminDashboard() {
           )}
 
           {activeSidebarItem === 'reports' && (
-            <AdminReportsPage />
+            <Suspense fallback={<div className="min-h-32 flex items-center justify-center">Loading reports...</div>}>
+              <ReportsTab />
+            </Suspense>
           )}
 
           {activeSidebarItem === 'settings' && (
-            <div className="space-y-6">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl">
-                  <Phone className="h-6 w-6 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-bold">Phone Number Management</h2>
-                  <p className="text-muted-foreground">Assign phone numbers to employees for Exotel calling</p>
-                </div>
-              </div>
-              
-              <Card className="border-none shadow-lg">
-                <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 border-b">
-                  <div className="flex items-center gap-2">
-                    <div className="p-2 bg-purple-100 rounded-lg">
-                      <Phone className="h-5 w-5 text-purple-600" />
-                    </div>
-                    <div>
-                      <CardTitle className="text-purple-900">Phone Number Assignments</CardTitle>
-                      <CardDescription className="mt-0.5">
-                        Each phone number is assigned to one employee for making calls
-                      </CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-6 pt-6">
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
-                    <AlertTriangle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                    <div className="text-sm text-blue-800">
-                      <p className="font-medium mb-1">Phone Number Assignment Rules:</p>
-                      <ul className="list-disc list-inside space-y-1">
-                        <li>Each phone number can only be assigned to ONE employee</li>
-                        <li>Select a manager first, then choose an employee under that manager</li>
-                        <li>Employees can only use their assigned phone number for calling</li>
-                      </ul>
-                    </div>
-                  </div>
-
-                  {/* Add New Phone Number Assignment */}
-                  <div className="border rounded-lg p-4 space-y-4 bg-gradient-to-br from-gray-50 to-white">
-                    <h3 className="font-semibold text-lg flex items-center gap-2">
-                      <Plus className="h-5 w-5 text-purple-600" />
-                      Add New Phone Number
-                    </h3>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="new-phone-number">Phone Number</Label>
-                        <Input
-                          id="new-phone-number"
-                          value={newFromNumber}
-                          onChange={(e) => {
-                            const value = e.target.value.replace(/\D/g, ''); // Only allow digits
-                            if (value.length <= 10) { // Max 10 digits
-                              setNewFromNumber(value);
-                            }
-                          }}
-                          placeholder="Enter 10-digit phone number"
-                          className="border-purple-200 focus:border-purple-400"
-                          maxLength={10}
-                        />
-                        {newFromNumber && newFromNumber.length < 10 && (
-                          <p className="text-xs text-red-600">
-                            {10 - newFromNumber.length} more digit{10 - newFromNumber.length !== 1 ? 's' : ''} required
-                          </p>
-                        )}
-                        {newFromNumber && newFromNumber.length === 10 && (
-                          <p className="text-xs text-green-600 flex items-center gap-1">
-                            <CheckCircle className="h-3 w-3" />
-                            Valid phone number
-                          </p>
-                        )}
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <Label htmlFor="assign-manager">Manager</Label>
-                        <Select
-                          value={selectedManagerFilter}
-                          onValueChange={(value) => {
-                            setSelectedManagerFilter(value);
-                            setBulkAssignManagerId(''); // Reset employee selection
-                          }}
-                        >
-                          <SelectTrigger className="border-purple-200 focus:border-purple-400">
-                            <SelectValue placeholder="Select Manager" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">Select a Manager</SelectItem>
-                            {managers.map((manager) => (
-                              <SelectItem key={manager.id} value={manager.id}>
-                                {manager.profile?.full_name || 'Unnamed Manager'}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <Label htmlFor="assign-employee">Employee</Label>
-                        <Select
-                          value={bulkAssignManagerId}
-                          onValueChange={setBulkAssignManagerId}
-                          disabled={!selectedManagerFilter || selectedManagerFilter === 'none'}
-                        >
-                          <SelectTrigger className="border-purple-200 focus:border-purple-400">
-                            <SelectValue placeholder="Select Employee" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="none">Select an Employee</SelectItem>
-                            {employees
-                              .filter(emp => emp.manager_id === selectedManagerFilter)
-                              .map((employee) => (
-                                <SelectItem key={employee.id} value={employee.id}>
-                                  {employee.profile?.full_name || 'Unnamed Employee'}
-                                </SelectItem>
-                              ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                    
-                    <div className="flex justify-end">
-                      <Button
-                        onClick={addFromNumber}
-                        disabled={!newFromNumber.trim() || !bulkAssignManagerId || bulkAssignManagerId === 'none'}
-                        className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Assign Phone Number
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Display Current Phone Numbers */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-lg font-semibold">Assigned Phone Numbers ({phoneAssignments.length})</Label>
-                      <Badge className="bg-purple-100 text-purple-700">
-                        {phoneAssignments.length} Active
-                      </Badge>
-                    </div>
-                    {phoneAssignments.length === 0 ? (
-                      <div className="text-center py-12 border-2 border-dashed rounded-lg">
-                        <Phone className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                        <p className="text-gray-500 font-medium">No phone numbers assigned yet</p>
-                        <p className="text-sm text-gray-400 mt-1">Add your first phone number above</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {phoneAssignments.map((assignment) => (
-                          <div key={assignment.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors">
-                            <div className="flex items-center gap-4 flex-1">
-                              <div className="p-2 bg-purple-100 rounded-lg">
-                                <Phone className="h-5 w-5 text-purple-600" />
-                              </div>
-                              <div className="flex-1">
-                                <p className="font-mono font-semibold text-lg">{assignment.phone_number}</p>
-                                <p className="text-sm text-gray-500">
-                                  Assigned to: {assignment.employees?.full_name || 'Unassigned'}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                {assignment.managers?.full_name && (
-                                  <Badge variant="outline" className="text-green-700 border-green-300">
-                                    <UserCog className="h-3 w-3 mr-1" />
-                                    {assignment.managers.full_name}
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => removeFromNumber(assignment.id)}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            <Suspense fallback={<div className="min-h-32 flex items-center justify-center">Loading settings...</div>}>
+              <SettingsTab
+                companySettings={companySettings}
+                setCompanySettings={setCompanySettings}
+                newFromNumber={newFromNumber}
+                setNewFromNumber={setNewFromNumber}
+                selectedManagerFilter={selectedManagerFilter}
+                setSelectedManagerFilter={setSelectedManagerFilter}
+                bulkAssignManagerId={bulkAssignManagerId}
+                setBulkAssignManagerId={setBulkAssignManagerId}
+                addFromNumber={addFromNumber}
+                phoneAssignments={phoneAssignments}
+                removeFromNumber={removeFromNumber}
+                managers={managers}
+                employees={employees}
+              />
+            </Suspense>
           )}
 
           {activeSidebarItem === 'clients' && (
@@ -5112,7 +4700,9 @@ export default function AdminDashboard() {
           )}
 
           {activeSidebarItem === 'jobs' && (
-            <JobsPage />
+            <Suspense fallback={<div className="min-h-32 flex items-center justify-center">Loading jobs...</div>}>
+              <JobsTab />
+            </Suspense>
           )}
 
           {activeSidebarItem === 'profile' && (
@@ -5126,7 +4716,7 @@ export default function AdminDashboard() {
                   <p className="text-muted-foreground">Manage your admin account settings and information</p>
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Personal Information */}
                 <Card className="border-none shadow-lg">
@@ -5445,15 +5035,15 @@ export default function AdminDashboard() {
                           </>
                         )}
                       </Button>
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         onClick={() => {
                           setIsPasswordEditing(false);
                           setPasswordData({
                             new_password: '',
                             confirm_password: '',
                           });
-                        }} 
+                        }}
                         size="sm"
                         className="border-red-200 hover:bg-red-50"
                       >
@@ -5692,27 +5282,27 @@ export default function AdminDashboard() {
                     <Label>Assign Clients (Optional)</Label>
                     {clients && clients.length > 0 ? (
                       <div className="border rounded-md p-3 max-h-48 overflow-y-auto space-y-2">
-                      {clients.map((client) => (
-                        <div key={client.id} className="flex items-center space-x-2">
-                          <Checkbox
-                            id={`client-${client.id}`}
-                            checked={selectedClientIds.includes(client.id)}
-                            onCheckedChange={(checked) => {
-                              if (checked) {
-                                setSelectedClientIds(prev => [...prev, client.id]);
-                              } else {
-                                setSelectedClientIds(prev => prev.filter(id => id !== client.id));
-                              }
-                            }}
-                          />
-                          <label
-                            htmlFor={`client-${client.id}`}
-                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                          >
-                            {client.name} {client.industry && `(${client.industry})`}
-                          </label>
-                        </div>
-                      ))}
+                        {clients.map((client) => (
+                          <div key={client.id} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`client-${client.id}`}
+                              checked={selectedClientIds.includes(client.id)}
+                              onCheckedChange={(checked) => {
+                                if (checked) {
+                                  setSelectedClientIds(prev => [...prev, client.id]);
+                                } else {
+                                  setSelectedClientIds(prev => prev.filter(id => id !== client.id));
+                                }
+                              }}
+                            />
+                            <label
+                              htmlFor={`client-${client.id}`}
+                              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                            >
+                              {client.name} {client.industry && `(${client.industry})`}
+                            </label>
+                          </div>
+                        ))}
                       </div>
                     ) : (
                       <p className="text-sm text-muted-foreground border rounded-md p-3">
@@ -5739,20 +5329,20 @@ export default function AdminDashboard() {
                   <SelectTrigger>
                     <SelectValue placeholder="Select manager" />
                   </SelectTrigger>
-                    <SelectContent>
-                      {console.log('Rendering manager dropdown, managers:', managers)}
-                      {managers.length === 0 ? (
-                        <SelectItem value="no-managers" disabled>
-                          No managers available - create a manager first
+                  <SelectContent>
+                    {console.log('Rendering manager dropdown, managers:', managers)}
+                    {managers.length === 0 ? (
+                      <SelectItem value="no-managers" disabled>
+                        No managers available - create a manager first
+                      </SelectItem>
+                    ) : (
+                      managers.map((manager) => (
+                        <SelectItem key={manager.id} value={manager.id}>
+                          {manager.profile?.full_name || `Manager ${manager.user_id.slice(0, 8)}`}
                         </SelectItem>
-                      ) : (
-                        managers.map((manager) => (
-                          <SelectItem key={manager.id} value={manager.id}>
-                            {manager.profile?.full_name || `Manager ${manager.user_id.slice(0, 8)}`}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
+                      ))
+                    )}
+                  </SelectContent>
                 </Select>
                 {managers.length === 0 && (
                   <p className="text-sm text-muted-foreground mt-1">
@@ -6031,7 +5621,7 @@ export default function AdminDashboard() {
                 />
               </div>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="editPhone">Phone</Label>
@@ -6082,7 +5672,7 @@ export default function AdminDashboard() {
                     required
                   />
                 </div>
-                
+
                 {/* Client Selection for Manager */}
                 {company?.industry?.toLowerCase() === 'hr' && (
                   <div className="space-y-2">
@@ -6293,7 +5883,7 @@ export default function AdminDashboard() {
                 const selectedGroup = leadGroups.find(g => g.id === newLead.groupId);
                 const hasManagerAssigned = selectedGroup?.assigned_to;
                 const assignedManager = hasManagerAssigned ? managers.find(m => m.id === selectedGroup.assigned_to) : null;
-                
+
                 return hasManagerAssigned ? (
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <p className="text-sm text-blue-800">
@@ -6348,8 +5938,8 @@ export default function AdminDashboard() {
                 Cancel
               </Button>
               <Button type="submit" disabled={
-                !newLead.name || 
-                !newLead.email || 
+                !newLead.name ||
+                !newLead.email ||
                 !newLead.contact ||
                 // Disable if group is selected but not assigned to a manager
                 (newLead.groupId && newLead.groupId !== "none" && !leadGroups.find(g => g.id === newLead.groupId)?.assigned_to) ||
@@ -6564,7 +6154,7 @@ export default function AdminDashboard() {
               <div>
                 <Label className="text-muted-foreground">Assigned To</Label>
                 <p className="font-medium">
-                  {selectedLeadGroup?.assigned_to ? 
+                  {selectedLeadGroup?.assigned_to ?
                     managers.find(m => m.id === selectedLeadGroup.assigned_to)?.profile?.full_name || 'Manager' :
                     'Unassigned'}
                 </p>
@@ -6583,13 +6173,12 @@ export default function AdminDashboard() {
                     <div key={lead.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50">
                       <div>
                         <p className="font-medium">{lead.name}</p>
-                        <p className="text-sm text-muted-foreground">{lead.email}</p>
                         <p className="text-sm text-muted-foreground">{lead.contact}</p>
                       </div>
                       <Badge variant={
                         lead.status === 'converted' ? 'default' :
-                        lead.status === 'assigned' ? 'secondary' :
-                        lead.status === 'active' ? 'outline' : 'destructive'
+                          lead.status === 'assigned' ? 'secondary' :
+                            lead.status === 'active' ? 'outline' : 'destructive'
                       }>
                         {lead.status}
                       </Badge>
@@ -6639,7 +6228,7 @@ export default function AdminDashboard() {
                     <div className="space-y-1">
                       {leads.filter(l => l.group_id === selectedLeadGroup.id).slice(0, 5).map(lead => (
                         <div key={lead.id} className="text-xs bg-white p-2 rounded border">
-                          • {lead.name} - {lead.email}
+                          • {lead.name}
                         </div>
                       ))}
                       {leads.filter(l => l.group_id === selectedLeadGroup.id).length > 5 && (
@@ -6683,7 +6272,6 @@ export default function AdminDashboard() {
             {leadToDelete && (
               <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
                 <p className="text-sm"><span className="font-medium">Name:</span> {leadToDelete.name}</p>
-                <p className="text-sm"><span className="font-medium">Email:</span> {leadToDelete.email}</p>
                 <p className="text-sm"><span className="font-medium">Contact:</span> {leadToDelete.contact}</p>
               </div>
             )}
@@ -6724,7 +6312,7 @@ export default function AdminDashboard() {
                   const lead = leads.find(l => l.id === leadId);
                   return lead ? (
                     <div key={leadId} className="text-xs bg-white p-2 rounded border">
-                      <p><strong>{lead.name}</strong> - {lead.email}</p>
+                      <p><strong>{lead.name}</strong></p>
                     </div>
                   ) : null;
                 })}
@@ -6797,7 +6385,7 @@ export default function AdminDashboard() {
             <Button variant="outline" onClick={() => setIsBulkAssignModalOpen(false)}>
               Cancel
             </Button>
-            <Button 
+            <Button
               onClick={confirmBulkAssign}
               disabled={!bulkAssignManagerId}
             >
@@ -6881,7 +6469,7 @@ export default function AdminDashboard() {
             <Button variant="outline" onClick={() => setIsBulkGroupModalOpen(false)}>
               Cancel
             </Button>
-            <Button 
+            <Button
               onClick={confirmBulkGroup}
               disabled={
                 (bulkGroupOption === 'existing' && !bulkSelectedGroupId) ||
@@ -7084,11 +6672,11 @@ export default function AdminDashboard() {
                   <div>
                     <Label htmlFor="csv-assign" className="text-sm font-semibold">Assign To Manager</Label>
                     <p className="text-xs text-muted-foreground mb-3">
-                      {csvGroupOption === 'new' 
-                        ? 'Assign the new group to a manager' 
+                      {csvGroupOption === 'new'
+                        ? 'Assign the new group to a manager'
                         : csvGroupOption === 'existing'
-                        ? 'Note: Leads will be assigned based on the selected group\'s manager'
-                        : 'Directly assign these leads to a manager'}
+                          ? 'Note: Leads will be assigned based on the selected group\'s manager'
+                          : 'Directly assign these leads to a manager'}
                     </p>
                     {(csvGroupOption === 'none' || csvGroupOption === 'new') && (
                       <Select value={csvAssignedTo} onValueChange={setCsvAssignedTo}>
@@ -7128,7 +6716,7 @@ export default function AdminDashboard() {
               <p className="text-blue-800">Name, Email, Contact, Description (optional)</p>
               <p className="mt-2 text-blue-800"><strong>Example:</strong></p>
               <code className="text-xs block bg-white p-2 rounded mt-1 text-blue-900">
-                John Doe, john@example.com, +1234567890, Interested in premium plan<br/>
+                John Doe, john@example.com, +1234567890, Interested in premium plan<br />
                 Jane Smith, jane@example.com, +0987654321, Follow up next week
               </code>
               <p className="mt-2 text-xs text-blue-700">
@@ -7137,9 +6725,9 @@ export default function AdminDashboard() {
             </div>
           </div>
           <div className="flex justify-end gap-2 mt-6">
-            <Button 
-              type="button" 
-              variant="outline" 
+            <Button
+              type="button"
+              variant="outline"
               onClick={() => {
                 setIsUploadCSVModalOpen(false);
                 setCsvFile(null);
@@ -7152,8 +6740,8 @@ export default function AdminDashboard() {
             >
               Cancel
             </Button>
-            <Button 
-              type="button" 
+            <Button
+              type="button"
               onClick={handleCSVUpload}
               disabled={csvLeads.length === 0 || isUploadingCSV}
             >

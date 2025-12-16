@@ -74,7 +74,7 @@ export default function PhoneDialer({ onCallComplete }: PhoneDialerProps) {
       // Get employee's assigned phone number from phone_numbers table
       const { data, error } = await supabase
         .from('phone_numbers')
-        .select('id, company_id, employee_id, phone_number, is_active, created_at, updated_at')
+        .select('*')
         .eq('employee_id', userRole.id)
         .eq('is_active', true)
         .single();
@@ -114,7 +114,7 @@ export default function PhoneDialer({ onCallComplete }: PhoneDialerProps) {
     try {
       const { data, error } = await supabase
         .from('company_settings')
-        .select('id, company_id, caller_id, from_numbers, created_at, updated_at')
+        .select('*')
         .eq('company_id', userRole.company_id)
         .single();
 

@@ -18,7 +18,7 @@ export default function RoleSelection({ onSignup, onLogin, onBack }: RoleSelecti
     {
       id: 'signup',
       title: 'Sign Up',
-      description: 'Create your company account and get started with Tasknova',
+      description: 'Create your company account and get started with Sattva',
       icon: Building,
       color: 'blue',
       features: ['Create your company', 'Add managers & employees', 'Full admin access', '14-day free trial'],
@@ -97,17 +97,15 @@ export default function RoleSelection({ onSignup, onLogin, onBack }: RoleSelecti
           className="text-center mb-12"
         >
           <div className="flex items-center justify-center mb-6">
-            <img 
-              src="/logo.png" 
-              alt="Tasknova" 
-              className="h-12 w-auto"
-              onError={(e) => {
-                e.currentTarget.src = "/logo2.png";
-              }}
-            />
+              <img 
+                src="/Sattva_logo.png" 
+                alt="Sattva" 
+                className="h-12 w-auto"
+                onError={(e) => { e.currentTarget.src = "/Sattva_logo.png"; }}
+              />
           </div>
           <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            Welcome to Tasknova Voice Analysis
+            Welcome to Sattva Voice Analysis
           </h1>
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
             Get started with AI-powered call analysis for your business

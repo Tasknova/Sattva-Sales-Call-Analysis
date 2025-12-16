@@ -92,18 +92,14 @@ export default function LoginOptions({ onAdminLogin, onManagerLogin, onEmployeeL
           className="text-center mb-12"
         >
           <div className="flex items-center justify-center mb-6">
-            <img 
-              src="/logo.png" 
-              alt="Tasknova" 
-              className="h-12 w-auto"
-              onError={(e) => {
-                e.currentTarget.src = "/logo2.png";
-              }}
-            />
+                    <img 
+                      src="/Sattva_logo.png" 
+                      alt="Sattva" 
+                      className="h-12 w-auto"
+                      onError={(e) => { e.currentTarget.src = "/Sattva_logo.png"; }}
+                    />
           </div>
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">
-            Welcome Back to Tasknova
-          </h1>
+          
           <p className="text-xl text-gray-600 max-w-2xl mx-auto">
             Choose your role to access the appropriate dashboard and features
           </p>

@@ -194,7 +194,7 @@ export default function ManagerDashboard() {
   const [callsChartEmployeeFilter, setCallsChartEmployeeFilter] = useState<string>('all');
   
   // Team Performance filters
-  const [teamPerfDateFilter, setTeamPerfDateFilter] = useState<'today' | 'yesterday' | 'week' | 'month' | 'custom'>('week');
+  const [teamPerfDateFilter, setTeamPerfDateFilter] = useState<'today' | 'yesterday' | 'week' | 'month' | 'custom'>('today');
   const [teamPerfCustomStartDate, setTeamPerfCustomStartDate] = useState<string>('');
   const [teamPerfCustomEndDate, setTeamPerfCustomEndDate] = useState<string>('');
   const [teamPerfEmployeeFilter, setTeamPerfEmployeeFilter] = useState<string>('all');
@@ -455,7 +455,7 @@ export default function ManagerDashboard() {
       // First, get the manager's data
       const { data: managerData, error: managerError } = await supabase
         .from('managers')
-        .select('id, user_id, company_id, full_name, email, created_at')
+        .select('*')
         .eq('user_id', userRole.user_id)
         .eq('company_id', userRole.company_id)
         .single();
@@ -502,7 +502,7 @@ export default function ManagerDashboard() {
       // Fetch employees under this manager (exclude the manager themselves)
       const { data: employeesData, error: employeesError } = await supabase
         .from('employees')
-        .select('id, user_id, email, full_name, phone, is_active, created_at, updated_at')
+        .select('*')
         .eq('company_id', userRole.company_id)
         .eq('manager_id', managerData.id)
         .eq('is_active', true)
@@ -526,7 +526,7 @@ export default function ManagerDashboard() {
       // Fetch lead groups assigned to this manager
       const { data: leadGroupsData, error: leadGroupsError } = await supabase
         .from('lead_groups')
-        .select('id, user_id, group_name, assigned_to, company_id, created_at, updated_at')
+        .select('*')
         .eq('assigned_to', managerData.id)
         .eq('company_id', userRole.company_id);
 
@@ -549,7 +549,7 @@ export default function ManagerDashboard() {
         console.log('Manager Dashboard - Fetching calls for employee user_ids:', employeeUserIds);
         const { data, error } = await supabase
           .from('call_history')
-          .select('id, lead_id, employee_id, company_id, outcome, notes, call_date, next_follow_up, created_at, exotel_call_sid, exotel_recording_url, exotel_duration, leads(name, email, contact), employees(full_name, email)')
+          .select('*, leads(name, email, contact), employees(full_name, email)')
           .in('employee_id', employeeUserIds)
           .eq('company_id', userRole.company_id)
           .order('created_at', { ascending: false });
@@ -576,7 +576,7 @@ export default function ManagerDashboard() {
         console.log('Manager Dashboard - Fetching call outcomes for employee ids:', employeeIds);
         const { data, error } = await supabase
           .from('call_outcomes')
-          .select('id, lead_id, employee_id, outcome, call_date, created_at')
+          .select('*')
           .in('employee_id', employeeIds)
           .eq('company_id', userRole.company_id);
         callOutcomesData = data;
@@ -601,15 +601,15 @@ export default function ManagerDashboard() {
         const { data, error } = await supabase
           .from('analyses')
           .select(`
-            id,
-            user_id,
-            status,
-            created_at,
-            call_quality_score,
-            script_adherence,
-            compilience_expections_score,
-            closure_probability,
-            candidate_acceptance_risk,
+              <img 
+              src="/Sattva_logo.png" 
+              alt="Sattva" 
+              className="h-10 w-auto cursor-pointer hover:opacity-80 transition-opacity"
+              onError={(e) => {
+                e.currentTarget.src = "/Sattva_logo.png";
+              }}
+              onClick={() => navigate('/')}
+            />
             recordings ( id, file_name, recording_url, status, call_history_id )
           `)
           .in('user_id', employeeUserIds);
@@ -1432,11 +1432,11 @@ export default function ManagerDashboard() {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <img 
-              src="/logo.png" 
-              alt="Tasknova" 
+              src="/Sattva_logo.png" 
+              alt="Sattva" 
               className="h-12 w-auto cursor-pointer hover:scale-110 transition-transform"
               onError={(e) => {
-                e.currentTarget.src = "/logo2.png";
+                e.currentTarget.src = "/Sattva_logo.png";
               }}
             />
             <div className="border-l-2 border-green-500/30 pl-4">
@@ -2578,7 +2578,6 @@ export default function ManagerDashboard() {
                                 </div>
                                 <div>
                                   <h4 className="font-medium">{lead.name}</h4>
-                                  <p className="text-sm text-muted-foreground">{lead.email}</p>
                                   <p className="text-sm text-muted-foreground">{lead.contact}</p>
                                   {company?.industry?.toLowerCase() === 'hr' && (
                                     <div className="flex gap-2 mt-1">
@@ -2767,7 +2766,6 @@ export default function ManagerDashboard() {
                                       </div>
                                       <div className="flex-1">
                                         <h4 className="font-medium">{lead.name}</h4>
-                                        <p className="text-sm text-muted-foreground">{lead.email}</p>
                                         <p className="text-sm text-muted-foreground">{lead.contact}</p>
                                       </div>
                                     </div>
@@ -4065,7 +4063,6 @@ export default function ManagerDashboard() {
                       >
                         <div>
                           <p className="font-medium">{lead.name}</p>
-                          <p className="text-sm text-muted-foreground">{lead.email}</p>
                           <p className="text-sm text-muted-foreground">{lead.contact}</p>
                           {isAssigned ? (
                             <p className="text-xs text-green-600 font-medium">✓ Assigned to: {assignedEmployee.full_name}</p>
@@ -4236,7 +4233,6 @@ export default function ManagerDashboard() {
                     {csvLeads.slice(0, 5).map((lead, index) => (
                       <div key={index} className="text-xs p-2 bg-white rounded border">
                         <p><strong>Name:</strong> {lead.name}</p>
-                        <p><strong>Email:</strong> {lead.email}</p>
                         <p><strong>Contact:</strong> {lead.contact}</p>
                         {lead.description && <p><strong>Description:</strong> {lead.description}</p>}
                       </div>

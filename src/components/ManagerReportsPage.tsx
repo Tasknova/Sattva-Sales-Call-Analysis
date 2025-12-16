@@ -108,7 +108,7 @@ export default function ManagerReportsPage() {
       // Fetch employees under this manager (removed is_active filter)
       const { data: employeesData, error: employeesError } = await supabase
         .from('employees')
-        .select('id, user_id, full_name, email, manager_id, is_active, company_id, created_at, updated_at')
+        .select('*')
         .eq('company_id', userRole.company_id)
         .eq('manager_id', managerData.id);
 
@@ -131,7 +131,7 @@ export default function ManagerReportsPage() {
       // Fetch calls for the period
       const { data: callsData, error: callsError } = await supabase
         .from('call_history')
-        .select('id, lead_id, employee_id, company_id, outcome, notes, call_date, created_at, exotel_duration')
+        .select('*')
         .in('employee_id', employeeIds)
         .gte('created_at', startDate)
         .lte('created_at', endDate);
@@ -154,7 +154,7 @@ export default function ManagerReportsPage() {
       const callIds = (callsData || []).map(call => call.id);
       const { data: analysesData, error: analysesError } = await supabase
         .from('analyses')
-        .select('id, call_id, user_id, status, sentiment_score, engagement_score, confidence_score_executive, confidence_score_person, created_at')
+        .select('*')
         .in('call_id', callIds);
 
       if (analysesError) {

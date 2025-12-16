@@ -59,7 +59,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
           <div className="p-8 bg-gradient-to-br from-blue-500 to-purple-600 text-white">
             <DialogHeader className="text-left">
               <DialogTitle className="text-2xl font-bold mb-2">
-                Welcome to Tasknova
+                Welcome to Sattva
               </DialogTitle>
               <DialogDescription className="text-blue-100 text-base">
                 Transform your call performance with AI-powered insights

@@ -70,7 +70,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       // Fetch user role - prioritize admin role (oldest created)
       const { data: roleData, error: roleError } = await supabase
         .from('user_roles')
-        .select('id, user_id, company_id, role, manager_id, is_active, created_at, updated_at')
+        .select('*')
         .eq('user_id', userId)
         .eq('is_active', true)
         .order('created_at', { ascending: true })
@@ -86,7 +86,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
           console.log('Multiple roles found, fetching the first one...');
           const { data: multipleRoles, error: multipleError } = await supabase
             .from('user_roles')
-            .select('id, user_id, company_id, role, manager_id, is_active, created_at, updated_at')
+            .select('*')
             .eq('user_id', userId)
             .eq('is_active', true)
             .order('created_at', { ascending: true })

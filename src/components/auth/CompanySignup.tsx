@@ -120,7 +120,7 @@ export default function CompanySignup({ onComplete, onBack, onExistingAccount }:
               </div>
               
               <p className="text-lg text-gray-600 mb-8">
-                Get started with Tasknova Voice Analysis and unlock the power of AI-driven call insights for your business.
+                Get started with Sattva Voice Analysis and unlock the power of AI-driven call insights for your business.
               </p>
 
               <div className="space-y-4">
@@ -175,7 +175,7 @@ export default function CompanySignup({ onComplete, onBack, onExistingAccount }:
                 </div>
                 <CardTitle className="text-2xl">Create Your Company Account</CardTitle>
                 <CardDescription className="text-base">
-                  Start your journey with Tasknova Voice Analysis
+                  Start your journey with Sattva Voice Analysis
                 </CardDescription>
               </CardHeader>
               <CardContent>

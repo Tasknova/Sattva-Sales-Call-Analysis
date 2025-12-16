@@ -52,7 +52,7 @@ export default function EmployeeAnalysisPage() {
         // 1) Primary attempt: fetch analyses where analyses.user_id = employee user id
         const { data, error } = await supabase
           .from('analyses')
-          .select('id, recording_id, call_id, status, sentiment_score, engagement_score, confidence_score_executive, confidence_score_person, detailed_call_analysis, closure_probability, candidate_acceptance_risk, created_at, recordings (id, file_name, recording_url, call_history_id)')
+          .select(`*, recordings (id, file_name, recording_url, call_history_id)`) 
           .eq('user_id', filterUserId);
 
         if (!error && data && data.length > 0) {
@@ -115,7 +115,7 @@ export default function EmployeeAnalysisPage() {
         // Finally fetch analyses whose recording_id is in these recordingIds
         const { data: fallbackAnalyses, error: fallbackError } = await supabase
           .from('analyses')
-          .select('id, recording_id, call_id, status, sentiment_score, engagement_score, confidence_score_executive, confidence_score_person, detailed_call_analysis, closure_probability, candidate_acceptance_risk, created_at, recordings (id, file_name, recording_url, call_history_id)')
+          .select(`*, recordings (id, file_name, recording_url, call_history_id)`)
           .in('recording_id', recordingIds)
           .order('created_at', { ascending: false });
 

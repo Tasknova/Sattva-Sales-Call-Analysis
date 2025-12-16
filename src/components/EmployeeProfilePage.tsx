@@ -51,7 +51,7 @@ export default function EmployeeProfilePage({ onBack }: EmployeeProfilePageProps
       // Fetch employee profile from employees table
       const { data: employeeData, error: employeeError } = await supabase
         .from('employees')
-        .select('id, user_id, full_name, email, contact_number, phone, contact, is_active, created_at, updated_at')
+        .select('*')
         .eq('user_id', user.id)
         .single();
 

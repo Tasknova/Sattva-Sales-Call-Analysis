@@ -26,9 +26,7 @@ export default function AnalysisDetail() {
         // Fetch analysis
         const { data: analysisData, error: analysisError } = await supabase
           .from('analyses')
-          .select(
-            'id, recording_id, user_id, participants_count, participants_names, closure_probability, closure_probability_reasoning, recruiter_process_score, candidate_acceptance_risk, candidate_acceptance_risk_reasoning, recruiter_confidence_score, purpose_of_call, exec_summary, next_steps, ai_feedback_for_recruiter, outcome, objections_detected, objections_handeled, additional_details, follow_up_details, objections_raised, objections_handled, call_quality_score, script_adherence, compilience_expections_score, sentiment_score, engagement_score, confidence_score_executive, confidence_score_person, improvements, call_outcome, created_at'
-          )
+          .select('*')
           .eq('id', id)
           .single();
 
@@ -37,7 +35,7 @@ export default function AnalysisDetail() {
         // Fetch recording
         const { data: recordingData, error: recordingError } = await supabase
           .from('recordings')
-          .select('id, user_id, lead_id, call_history_id, file_name, recording_url, status, duration_seconds, transcript, created_at, updated_at')
+          .select('*')
           .eq('id', analysisData.recording_id)
           .single();
 
@@ -117,17 +115,17 @@ export default function AnalysisDetail() {
               Back to Analysis
             </Button>
             <img 
-              src="/logo.png" 
-              alt="Tasknova" 
+              src="/Sattva_logo.png" 
+              alt="Sattva" 
               className="h-8 w-auto"
               onError={(e) => {
-                e.currentTarget.src = "/logo2.png";
+                e.currentTarget.src = "/Sattva_logo.png";
               }}
             />
             <div>
               <h1 className="text-2xl font-bold text-foreground">Call Analysis Details</h1>
               <p className="text-muted-foreground">
-                <span className="font-semibold text-accent-blue">Tasknova</span> Voice Analysis • {recording.file_name || 'Recording'}
+                <span className="font-semibold text-accent-blue">Sattva</span> Voice Analysis • {recording.file_name || 'Recording'}
               </p>
             </div>
           </div>

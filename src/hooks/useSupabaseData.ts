@@ -12,9 +12,7 @@ export function useRecordings() {
       
       const { data, error } = await supabase
         .from('recordings')
-        .select(
-          'id, user_id, lead_id, call_history_id, file_name, recording_url, status, duration_seconds, transcript, created_at, updated_at'
-        )
+        .select('*')
         .order('created_at', { ascending: false })
       
       if (error) throw error
@@ -61,7 +59,7 @@ export function useMetricsAggregates() {
       
       const { data, error } = await supabase
         .from('metrics_aggregates')
-        .select('id, user_id, date, total_calls, avg_sentiment, avg_engagement, conversion_rate, objections_rate')
+        .select('*')
         .order('date', { ascending: false })
       
       if (error) throw error
@@ -261,7 +259,7 @@ export function useLeadGroups() {
       
       const { data, error } = await supabase
         .from('lead_groups')
-        .select('id, user_id, group_name, created_at, updated_at')
+        .select('*')
         .order('created_at', { ascending: false })
       
       if (error) throw error
@@ -516,7 +514,7 @@ export function useClients() {
       
       const { data, error } = await supabase
         .from('clients')
-        .select('id, company_id, name, industry, contact_person, email, phone, address, website, is_active, created_at, updated_at')
+        .select('*')
         .eq('company_id', company.id)
         .order('created_at', { ascending: false })
       

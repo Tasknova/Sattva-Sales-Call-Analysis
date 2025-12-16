@@ -102,7 +102,7 @@ export default function ProfilePage({ onBack }: ProfilePageProps) {
     try {
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('id, user_id, email, full_name, avatar_url, company_name, company_email, company_industry, position, use_cases, onboarding_completed, created_at, updated_at')
+        .select('*')
         .eq('user_id', user.id)
         .maybeSingle();
 

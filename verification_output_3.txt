@@ -1,0 +1,188 @@
+src/components/AdminReportsPage.tsx(471,37): error TS2339: Property 'is_active' does not exist on type 'Manager'.
+src/components/AdminReportsPage.tsx(473,101): error TS2339: Property 'is_active' does not exist on type 'Employee'.
+src/components/AdminReportsPage.tsx(556,37): error TS2339: Property 'is_active' does not exist on type 'Manager'.
+src/components/auth/EmployeeLogin.tsx(31,13): error TS2554: Expected 3 arguments, but got 2.
+src/components/auth/ManagerLogin.tsx(31,13): error TS2554: Expected 3 arguments, but got 2.
+src/components/CallHistoryManager.tsx(659,30): error TS2367: This comparison appears to be unintentional because the types '"completed" | "failed" | "follow_up" | "converted" | "not_interested" | "interested" | "lost" | "no_answer"' and '"no-answer"' have no overlap.
+src/components/CallHistoryManager.tsx(659,62): error TS2367: This comparison appears to be unintentional because the types '"completed" | "failed" | "follow_up" | "converted" | "not_interested" | "interested" | "lost" | "no_answer"' and '"Failed"' have no overlap.
+src/components/CallHistoryManager.tsx(969,67): error TS2339: Property 'call_history_id' does not exist on type '{ id: string; file_name: string; stored_file_url: string; }'.
+src/components/CallHistoryManager.tsx(971,63): error TS2339: Property 'status' does not exist on type '{ id: string; file_name: string; stored_file_url: string; }'.
+src/components/CallHistoryManager.tsx(978,25): error TS2367: This comparison appears to be unintentional because the types '"completed" | "failed" | "follow_up" | "converted" | "not_interested" | "interested" | "lost" | "no_answer"' and '"no-answer"' have no overlap.
+src/components/CallHistoryManager.tsx(983,27): error TS2367: This comparison appears to be unintentional because the types '"completed" | "failed" | "follow_up" | "converted" | "not_interested" | "interested" | "lost" | "no_answer"' and '"no-answer"' have no overlap.
+src/components/CallHistoryManager.tsx(1000,28): error TS2367: This comparison appears to be unintentional because the types '"completed" | "failed" | "follow_up" | "converted" | "not_interested" | "interested" | "lost" | "no_answer"' and '"no-answer"' have no overlap.
+src/components/CallHistoryManager.tsx(1046,46): error TS2339: Property 'closure_probability' does not exist on type 'Analysis'.
+src/components/CallHistoryManager.tsx(1047,46): error TS2339: Property 'closure_probability' does not exist on type 'Analysis'.
+src/components/CallHistoryManager.tsx(1051,65): error TS2339: Property 'closure_probability' does not exist on type 'Analysis'.
+src/components/CallHistoryManager.tsx(1232,20): error TS2304: Cannot find name 'UserIcon'.
+src/components/Dashboard.tsx(205,30): error TS2339: Property 'detailed_call_analysis' does not exist on type 'Analysis'.
+src/components/Dashboard.tsx(646,74): error TS2339: Property 'detailed_call_analysis' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/components/Dashboard.tsx(681,93): error TS2339: Property 'sentiment_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/components/Dashboard.tsx(682,93): error TS2339: Property 'sentiment_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/components/Dashboard.tsx(683,49): error TS2339: Property 'sentiment_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/components/Dashboard.tsx(689,94): error TS2339: Property 'engagement_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/components/Dashboard.tsx(690,49): error TS2339: Property 'engagement_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/components/Dashboard.tsx(695,94): error TS2339: Property 'confidence_score_executive' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/components/Dashboard.tsx(696,94): error TS2339: Property 'confidence_score_executive' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/components/Dashboard.tsx(697,49): error TS2339: Property 'confidence_score_executive' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/components/Dashboard.tsx(702,94): error TS2339: Property 'confidence_score_person' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/components/Dashboard.tsx(703,94): error TS2339: Property 'confidence_score_person' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/components/Dashboard.tsx(704,49): error TS2339: Property 'confidence_score_person' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/components/dashboards/AdminDashboard.tsx(436,18): error TS2345: Argument of type '{ email: string; password: string; fullName: string; role: "manager" | "employee"; managerId: string; department: string; }' is not assignable to parameter of type 'SetStateAction<{ email: string; password: string; fullName: string; role: "manager" | "employee"; managerId: string; department: string; phone: string; }>'.
+  Property 'phone' is missing in type '{ email: string; password: string; fullName: string; role: "manager" | "employee"; managerId: string; department: string; }' but required in type '{ email: string; password: string; fullName: string; role: "manager" | "employee"; managerId: string; department: string; phone: string; }'.
+src/components/dashboards/AdminDashboard.tsx(530,19): error TS2345: Argument of type '{ id: any; user_id: any; company_id: any; role: string; manager_id: any; is_active: any; created_at: any; updated_at: any; profile: { full_name: any; email: any; department: any; password: any; }; employees: any[]; }[]' is not assignable to parameter of type 'SetStateAction<Manager[]>'.
+  Type '{ id: any; user_id: any; company_id: any; role: string; manager_id: any; is_active: any; created_at: any; updated_at: any; profile: { full_name: any; email: any; department: any; password: any; }; employees: any[]; }[]' is not assignable to type 'Manager[]'.
+    Type '{ id: any; user_id: any; company_id: any; role: string; manager_id: any; is_active: any; created_at: any; updated_at: any; profile: { full_name: any; email: any; department: any; password: any; }; employees: any[]; }' is missing the following properties from type 'Manager': email, full_name
+src/components/dashboards/AdminDashboard.tsx(531,20): error TS2345: Argument of type '{ id: any; user_id: any; company_id: any; role: string; manager_id: any; is_active: any; created_at: any; updated_at: any; profile: { full_name: any; email: any; department: any; password: any; }; }[]' is not assignable to parameter of type 'SetStateAction<User[]>'.
+  Type '{ id: any; user_id: any; company_id: any; role: string; manager_id: any; is_active: any; created_at: any; updated_at: any; profile: { full_name: any; email: any; department: any; password: any; }; }[]' is not assignable to type 'User[]'.
+    Type '{ id: any; user_id: any; company_id: any; role: string; manager_id: any; is_active: any; created_at: any; updated_at: any; profile: { full_name: any; email: any; department: any; password: any; }; }' is missing the following properties from type 'User': email, full_name
+src/components/dashboards/AdminDashboard.tsx(4069,50): error TS2322: Type 'Dispatch<SetStateAction<"all" | "month" | "week" | "today" | "yesterday">>' is not assignable to type '(value: string) => void'.
+  Types of parameters 'value' and 'value' are incompatible.
+    Type 'string' is not assignable to type 'SetStateAction<"all" | "month" | "week" | "today" | "yesterday">'.
+src/components/dashboards/AdminDashboard.tsx(5269,19): error TS2322: Type 'void' is not assignable to type 'ReactNode'.
+src/components/dashboards/AdminDashboard.tsx(5348,17): error TS2322: Type 'void' is not assignable to type 'ReactNode'.
+src/components/dashboards/AdminDashboard.tsx(5358,21): error TS2322: Type 'void' is not assignable to type 'ReactNode'.
+src/components/dashboards/AdminDashboard.tsx(5402,13): error TS2322: Type 'void' is not assignable to type 'ReactNode'.
+src/components/dashboards/EmployeeDashboard.tsx(311,14): error TS2339: Property 'on' does not exist on type 'PostgrestQueryBuilder<any, any, any, `leads:company_id=eq.${string}`, unknown>'.
+src/components/dashboards/EmployeeDashboard.tsx(400,26): error TS2345: Argument of type 'PostgrestFilterBuilder<any, any, any, any[], "leads", unknown, "GET">' is not assignable to parameter of type 'Promise<any>'.
+  Type 'PostgrestFilterBuilder<any, any, any, any[], "leads", unknown, "GET">' is missing the following properties from type 'Promise<any>': catch, finally, [Symbol.toStringTag]
+src/components/dashboards/EmployeeDashboard.tsx(555,21): error TS2345: Argument of type 'ParserError<"Expected identifier at `<img \n              src=\"/Sattva_logo.png\" \n              alt=\"Sattva\" \n              className=\"h-10 w-auto cursor-pointer hover:opacity-80 transition-opacity\"\n              onError={(e) => {\n                e.currentTarget.src = \"/Sattva_logo.png\";\n              }...' is not assignable to parameter of type 'SetStateAction<Analysis[]>'.
+  Type 'ParserError<"Expected identifier at `<img \n              src=\"/Sattva_logo.png\" \n              alt=\"Sattva\" \n              className=\"h-10 w-auto cursor-pointer hover:opacity-80 transition-opacity\"\n              onError={(e) => {\n                e.currentTarget.src = \"/Sattva_logo.png\";\n              }...' is not assignable to type 'Analysis[]'.
+    Type '{ error: true; } & String' is missing the following properties from type 'Analysis': id, user_id, status, created_at
+src/components/dashboards/EmployeeDashboard.tsx(562,48): error TS2339: Property 'recordings' does not exist on type 'ParserError<"Expected identifier at `<img \n              src=\"/Sattva_logo.png\" \n              alt=\"Sattva\" \n              className=\"h-10 w-auto cursor-pointer hover:opacity-80 transition-opacity\"\n              onError={(e) => {\n                e.currentTarget.src = \"/Sattva_logo.png\";\n              }...'.
+src/components/dashboards/EmployeeDashboard.tsx(563,28): error TS2339: Property 'recordings' does not exist on type 'ParserError<"Expected identifier at `<img \n              src=\"/Sattva_logo.png\" \n              alt=\"Sattva\" \n              className=\"h-10 w-auto cursor-pointer hover:opacity-80 transition-opacity\"\n              onError={(e) => {\n                e.currentTarget.src = \"/Sattva_logo.png\";\n              }...'.
+src/components/dashboards/EmployeeDashboard.tsx(564,40): error TS2339: Property 'recordings' does not exist on type 'ParserError<"Expected identifier at `<img \n              src=\"/Sattva_logo.png\" \n              alt=\"Sattva\" \n              className=\"h-10 w-auto cursor-pointer hover:opacity-80 transition-opacity\"\n              onError={(e) => {\n                e.currentTarget.src = \"/Sattva_logo.png\";\n              }...'.
+src/components/dashboards/EmployeeDashboard.tsx(735,107): error TS2339: Property 'sentiment_score' does not exist on type 'Analysis'.
+src/components/dashboards/EmployeeDashboard.tsx(736,108): error TS2339: Property 'engagement_score' does not exist on type 'Analysis'.
+src/components/dashboards/EmployeeDashboard.tsx(737,107): error TS2339: Property 'confidence_score_executive' does not exist on type 'Analysis'.
+src/components/dashboards/EmployeeDashboard.tsx(738,109): error TS2339: Property 'confidence_score_person' does not exist on type 'Analysis'.
+src/components/dashboards/EmployeeDashboard.tsx(2851,41): error TS2339: Property 'exotel_to_number' does not exist on type 'Call'.
+src/components/dashboards/EmployeeDashboard.tsx(2851,63): error TS2339: Property 'exotel_from_number' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(277,69): error TS2339: Property 'call_date' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(288,63): error TS2339: Property 'call_date' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(315,33): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(347,38): error TS2339: Property 'call_date' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(390,32): error TS2339: Property 'leads' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(391,31): error TS2339: Property 'leads' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(438,50): error TS2339: Property 'call_date' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(1196,22): error TS2345: Argument of type 'Lead' is not assignable to parameter of type 'SetStateAction<Lead>'.
+  Type 'import("D:/Tasknova Projects/Sattva (Call Analysis)/Sattva-Call-Analysis-/src/lib/supabase").Lead' is not assignable to type 'Lead'.
+    Property 'status' is optional in type 'Lead' but required in type 'Lead'.
+src/components/dashboards/ManagerDashboard.tsx(1313,84): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(1314,86): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(1319,58): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(1320,83): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(1347,97): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(1348,99): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(1353,76): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(1354,93): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(1727,134): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(1728,136): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(1742,134): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(1743,136): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(1768,88): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(1771,151): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(1774,88): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(1777,156): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(2117,104): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(2118,106): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(2124,78): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(2125,96): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(2213,115): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(2214,117): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(2221,94): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(2222,104): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(2625,65): error TS2345: Argument of type 'import("D:/Tasknova Projects/Sattva (Call Analysis)/Sattva-Call-Analysis-/src/lib/supabase").Lead' is not assignable to parameter of type 'Lead'.
+  Property 'status' is optional in type 'Lead' but required in type 'Lead'.
+src/components/dashboards/ManagerDashboard.tsx(2977,51): error TS2339: Property 'follow_up_details' does not exist on type 'Analysis'.
+src/components/dashboards/ManagerDashboard.tsx(2978,33): error TS2339: Property 'follow_up_details' does not exist on type 'Analysis'.
+src/components/dashboards/ManagerDashboard.tsx(2979,34): error TS2339: Property 'follow_up_details' does not exist on type 'Analysis'.
+src/components/dashboards/ManagerDashboard.tsx(3026,55): error TS2339: Property 'follow_up_details' does not exist on type 'Analysis'.
+src/components/dashboards/ManagerDashboard.tsx(3027,37): error TS2339: Property 'follow_up_details' does not exist on type 'Analysis'.
+src/components/dashboards/ManagerDashboard.tsx(3028,38): error TS2339: Property 'follow_up_details' does not exist on type 'Analysis'.
+src/components/dashboards/ManagerDashboard.tsx(3050,50): error TS2339: Property 'leads' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(3051,49): error TS2339: Property 'leads' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(3062,37): error TS2339: Property 'call_date' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(3063,58): error TS2339: Property 'call_date' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(3072,37): error TS2339: Property 'call_date' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(3073,58): error TS2339: Property 'call_date' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(3088,58): error TS2339: Property 'call_date' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(3098,58): error TS2339: Property 'call_date' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(3131,34): error TS2304: Cannot find name 'PhoneCall'.
+src/components/dashboards/ManagerDashboard.tsx(3177,69): error TS2339: Property 'leads' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(3181,37): error TS2339: Property 'leads' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(3193,37): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(3195,52): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(3195,82): error TS2339: Property 'exotel_duration' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(3208,65): error TS2339: Property 'employees' does not exist on type 'Call'.
+src/components/dashboards/ManagerDashboard.tsx(3357,38): error TS2552: Cannot find name 'navigate'. Did you mean 'navigator'?
+src/components/dashboards/ManagerDashboard.tsx(3567,28): error TS2304: Cannot find name 'PhoneCall'.
+src/components/dashboards/ManagerDashboard.tsx(3733,11): error TS2739: Type 'Lead' is missing the following properties from type 'Lead': user_id, updated_at
+src/components/dashboards/ManagerDashboard.tsx(4076,29): error TS2367: This comparison appears to be unintentional because the types '"completed" | "contacted" | "follow_up" | "not_interested" | "removed"' and '"assigned"' have no overlap.
+src/components/dashboards/ManagerDashboard.tsx(4077,29): error TS2367: This comparison appears to be unintentional because the types '"completed" | "contacted" | "follow_up" | "not_interested" | "removed"' and '"active"' have no overlap.
+src/components/EmployeeProfilePage.tsx(285,64): error TS2339: Property 'phone' does not exist on type 'EmployeeProfile'.
+src/components/EmployeeProfilePage.tsx(285,82): error TS2339: Property 'contact' does not exist on type 'EmployeeProfile'.
+src/components/ManagerReportsPage.tsx(404,38): error TS2339: Property 'is_active' does not exist on type 'Employee'.
+src/components/ManagerReportsPage.tsx(477,38): error TS2339: Property 'is_active' does not exist on type 'Employee'.
+src/contexts/AuthContext.tsx(376,19): error TS2345: Argument of type '{ id: any; user_id: any; role: any; company_id: any; is_active: boolean; }' is not assignable to parameter of type 'SetStateAction<UserRole>'.
+  Type '{ id: any; user_id: any; role: any; company_id: any; is_active: boolean; }' is missing the following properties from type 'UserRole': created_at, updated_at
+src/contexts/AuthContext.tsx(490,19): error TS2345: Argument of type '{ id: any; user_id: any; role: any; company_id: any; is_active: boolean; }' is not assignable to parameter of type 'SetStateAction<UserRole>'.
+  Type '{ id: any; user_id: any; role: any; company_id: any; is_active: boolean; }' is missing the following properties from type 'UserRole': created_at, updated_at
+src/contexts/AuthContext.tsx(610,19): error TS2345: Argument of type '{ id: any; user_id: any; role: any; company_id: any; is_active: boolean; }' is not assignable to parameter of type 'SetStateAction<UserRole>'.
+  Type '{ id: any; user_id: any; role: any; company_id: any; is_active: boolean; }' is missing the following properties from type 'UserRole': created_at, updated_at
+src/hooks/useSupabaseData.ts(84,65): error TS2339: Property 'sentiment_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(85,66): error TS2339: Property 'engagement_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(86,75): error TS2339: Property 'confidence_score_executive' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(87,72): error TS2339: Property 'confidence_score_person' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(89,57): error TS2339: Property 'call_outcome' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(89,122): error TS2339: Property 'call_outcome' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(92,59): error TS2339: Property 'sentiment_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(92,93): error TS2339: Property 'engagement_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(94,65): error TS2365: Operator '+' cannot be applied to types 'number' and 'string | number'.
+src/hooks/useSupabaseData.ts(95,75): error TS2551: Property 'objections_tackled' does not exist on type 'Analysis & { recordings: Recording; }'. Did you mean 'objections_handled'?
+src/hooks/useSupabaseData.ts(102,42): error TS2339: Property 'sentiment_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(107,42): error TS2339: Property 'sentiment_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(107,76): error TS2339: Property 'sentiment_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(112,42): error TS2339: Property 'sentiment_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(112,76): error TS2339: Property 'sentiment_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(117,42): error TS2339: Property 'sentiment_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(117,76): error TS2339: Property 'sentiment_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(122,42): error TS2339: Property 'sentiment_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(136,60): error TS2339: Property 'engagement_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(137,62): error TS2339: Property 'engagement_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(137,97): error TS2339: Property 'engagement_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(138,57): error TS2339: Property 'engagement_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(138,92): error TS2339: Property 'engagement_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(139,60): error TS2339: Property 'engagement_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(139,95): error TS2339: Property 'engagement_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(140,61): error TS2339: Property 'engagement_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(175,42): error TS2339: Property 'sentiment_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(183,31): error TS2339: Property 'confidence_score_executive' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(184,28): error TS2339: Property 'confidence_score_person' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(193,29): error TS2551: Property 'objections_tackled' does not exist on type 'Analysis & { recordings: Recording; }'. Did you mean 'objections_handled'?
+src/hooks/useSupabaseData.ts(204,31): error TS2339: Property 'sentiment_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(205,32): error TS2339: Property 'engagement_score' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(206,41): error TS2339: Property 'confidence_score_executive' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(207,38): error TS2339: Property 'confidence_score_person' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(211,34): error TS2339: Property 'improvements' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/hooks/useSupabaseData.ts(212,33): error TS2339: Property 'call_outcome' does not exist on type 'Analysis & { recordings: Recording; }'.
+src/pages/AnalysisDetail.tsx(161,78): error TS2339: Property 'call_quality_score' does not exist on type 'Analysis'.
+src/pages/AnalysisDetail.tsx(162,75): error TS2339: Property 'call_quality_score' does not exist on type 'Analysis'.
+src/pages/AnalysisDetail.tsx(167,79): error TS2339: Property 'call_quality_score' does not exist on type 'Analysis'.
+src/pages/AnalysisDetail.tsx(196,74): error TS2339: Property 'script_adherence' does not exist on type 'Analysis'.
+src/pages/AnalysisDetail.tsx(197,74): error TS2339: Property 'script_adherence' does not exist on type 'Analysis'.
+src/pages/AnalysisDetail.tsx(210,75): error TS2345: Argument of type 'string | 0' is not assignable to parameter of type 'number'.
+  Type 'string' is not assignable to type 'number'.
+src/pages/AnalysisDetail.tsx(211,65): error TS2345: Argument of type 'string | 0' is not assignable to parameter of type 'number'.
+  Type 'string' is not assignable to type 'number'.
+src/pages/AnalysisDetail.tsx(212,53): error TS2345: Argument of type 'string | 0' is not assignable to parameter of type 'number'.
+  Type 'string' is not assignable to type 'number'.
+src/pages/AnalysisDetail.tsx(213,33): error TS2345: Argument of type 'string | 0' is not assignable to parameter of type 'number'.
+  Type 'string' is not assignable to type 'number'.
+src/pages/AnalysisDetail.tsx(234,77): error TS2339: Property 'compilience_expections_score' does not exist on type 'Analysis'.
+src/pages/AnalysisDetail.tsx(235,44): error TS2339: Property 'compilience_expections_score' does not exist on type 'Analysis'.
+src/pages/AnalysisDetail.tsx(236,31): error TS2339: Property 'compilience_expections_score' does not exist on type 'Analysis'.
+src/pages/AnalysisDetail.tsx(239,43): error TS2339: Property 'compilience_expections_score' does not exist on type 'Analysis'.
+src/pages/AnalysisDetail.tsx(242,27): error TS2339: Property 'compilience_expections_score_reasoning' does not exist on type 'Analysis'.
+src/pages/AnalysisDetail.tsx(306,27): error TS2339: Property 'call_quality_score_reasoning' does not exist on type 'Analysis'.
+src/pages/EmployeeAnalysisPage.tsx(166,47): error TS2339: Property 'leads' does not exist on type '{ call_date?: string; lead_id?: string; outcome?: string; }'.
+src/pages/EmployeeAnalysisPage.tsx(336,51): error TS2339: Property 'leads' does not exist on type '{ call_date?: string; lead_id?: string; outcome?: string; }'.

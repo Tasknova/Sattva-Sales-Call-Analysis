@@ -1,0 +1,2 @@
+src/components/dashboards/AdminDashboard.tsx(4663,23): error TS1005: ')' expected.
+vite.config.ts(14,7): error TS2353: Object literal may only specify known properties, and 'fastRefresh' does not exist in type 'Options'.

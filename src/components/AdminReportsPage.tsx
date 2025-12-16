@@ -116,7 +116,7 @@ export default function AdminReportsPage() {
       // Fetch all managers (removed is_active filter to see all managers)
       const { data: managersData, error: managersError } = await supabase
         .from('managers')
-        .select('id, user_id, company_id, full_name, email, created_at, updated_at')
+        .select('*')
         .eq('company_id', userRole.company_id);
 
       if (managersError) {
@@ -129,7 +129,7 @@ export default function AdminReportsPage() {
       // Fetch all employees (removed is_active filter to see all employees)
       const { data: employeesData, error: employeesError } = await supabase
         .from('employees')
-        .select('id, user_id, full_name, email, manager_id, company_id, is_active, created_at, updated_at')
+        .select('*')
         .eq('company_id', userRole.company_id);
 
       if (employeesError) {
@@ -146,7 +146,7 @@ export default function AdminReportsPage() {
       // Note: employee_id in call_history is actually the user_id from employees table
       const { data: callsData, error: callsError } = await supabase
         .from('call_history')
-        .select('id, lead_id, employee_id, company_id, outcome, notes, call_date, created_at, exotel_duration')
+        .select('*')
         .eq('company_id', userRole.company_id)
         .gte('created_at', startDate)
         .lte('created_at', endDate);
@@ -168,7 +168,7 @@ export default function AdminReportsPage() {
       // Fetch analyses for the period
       const { data: analysesData, error: analysesError } = await supabase
         .from('analyses')
-        .select('id, call_id, user_id, status, sentiment_score, engagement_score, confidence_score_executive, confidence_score_person, created_at')
+        .select('*')
         .eq('company_id', userRole.company_id)
         .gte('created_at', startDate)
         .lte('created_at', endDate);

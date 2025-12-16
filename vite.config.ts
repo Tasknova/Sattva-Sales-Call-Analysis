@@ -11,9 +11,9 @@ export default defineConfig(({ mode }) => ({
   },
   plugins: [
     react({
-      fastRefresh: false,
+
       include: "**/*.{jsx,tsx}",
-    }), 
+    }),
     mode === "development" && componentTagger()
   ].filter(Boolean),
   resolve: {

@@ -117,7 +117,7 @@ export default function EmployeeReportsPage() {
       // Fetch all calls for this employee (same as dashboard)
       const { data: callsData, error: callsError } = await supabase
         .from('call_history')
-        .select('id, lead_id, employee_id, company_id, outcome, notes, call_date, created_at, exotel_duration')
+        .select('*')
         .eq('employee_id', userRole.user_id)
         .order('created_at', { ascending: false });
 
@@ -174,7 +174,7 @@ export default function EmployeeReportsPage() {
       // Fetch all analyses for the employee
       const { data: analysesData, error: analysesError } = await supabase
         .from('analyses')
-        .select('id, call_id, user_id, status, sentiment_score, engagement_score, closure_probability, candidate_acceptance_risk, recruiter_confidence_score, recruiter_process_score, created_at')
+        .select('*')
         .eq('user_id', userRole.user_id);
 
       if (analysesError) {
