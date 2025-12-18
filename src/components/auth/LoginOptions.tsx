@@ -18,7 +18,7 @@ export default function LoginOptions({ onAdminLogin, onManagerLogin, onEmployeeL
     {
       id: 'admin',
       title: 'Admin Login',
-      description: 'Company administrator with full access to manage users, leads, and analytics',
+      description: 'Company administrator with full access to manage users and leads',
       icon: Building,
       color: 'blue',
       action: onAdminLogin,
