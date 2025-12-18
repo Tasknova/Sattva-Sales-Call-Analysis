@@ -2267,10 +2267,19 @@ Please provide insights that are specific, actionable, and tailored to these met
         monthEnd.setHours(23,59,59,999);
         const t = new Date(call.call_date || call.created_at).getTime();
         return t >= monthStart.getTime() && t <= monthEnd.getTime();
+      } else if (dateFilter === 'custom' && customDateRange.startDate && customDateRange.endDate) {
+        const callDateOnly = new Date(call.call_date || call.created_at).toISOString().split('T')[0];
+        const callDateObj = new Date(callDateOnly + 'T00:00:00Z');
+        
+        const start = new Date(customDateRange.startDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(customDateRange.endDate);
+        end.setHours(23, 59, 59, 999);
+        return callDateObj.getTime() >= start.getTime() && callDateObj.getTime() <= end.getTime();
       }
       return true;
     });
-  }, [calls, callDateFilter, dateFilter]);
+  }, [calls, callDateFilter, dateFilter, customDateRange.startDate, customDateRange.endDate]);
 
   // baseFilteredCalls: for Employee dashboard we only apply date filters here
   const baseFilteredCalls = useMemo(() => {
