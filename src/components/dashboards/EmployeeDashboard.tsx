@@ -610,20 +610,10 @@ export default function EmployeeDashboard() {
             const firstCall = dateCalls[0];
             const lastCall = dateCalls[dateCalls.length - 1];
             
-            const firstCallTime = new Date(firstCall.call_date!);
-            const lastCallTime = new Date(lastCall.call_date!);
-            
-            // Extract login time in HH:MM:SS format
-            const loginHours = String(firstCallTime.getHours()).padStart(2, '0');
-            const loginMinutes = String(firstCallTime.getMinutes()).padStart(2, '0');
-            const loginSeconds = String(firstCallTime.getSeconds()).padStart(2, '0');
-            const loginTime = `${loginHours}:${loginMinutes}:${loginSeconds}`;
-            
-            // Extract logout time in HH:MM:SS format
-            const logoutHours = String(lastCallTime.getHours()).padStart(2, '0');
-            const logoutMinutes = String(lastCallTime.getMinutes()).padStart(2, '0');
-            const logoutSeconds = String(lastCallTime.getSeconds()).padStart(2, '0');
-            const logoutTime = `${logoutHours}:${logoutMinutes}:${logoutSeconds}`;
+            // Extract time directly from the string (times are in IST)
+            // Format: "2025-12-23 11:33:18+00" -> extract "11:33:18"
+            const loginTime = firstCall.call_date!.substring(11, 19); // HH:MM:SS
+            const logoutTime = lastCall.call_date!.substring(11, 19); // HH:MM:SS
             
             // Check if productivity record exists for this date
             const { data: existingRecord } = await supabase
@@ -637,6 +627,7 @@ export default function EmployeeDashboard() {
             const updateData: any = {
               employee_id: employeeData.id,
               company_id: employeeData.company_id,
+              manager_id: employeeData.manager_id,
               date: dateStr,
               updated_at: new Date().toISOString()
             };

@@ -3362,12 +3362,24 @@ export default function ManagerDashboard() {
                               {call.leads?.contact || 'N/A'}
                             </TableCell>
                             <TableCell className="text-gray-600">
-                              <div>{new Date(call.created_at).toLocaleDateString('en-GB')}</div>
+                              <div>
+                                {(() => {
+                                  const dateStr = call.call_date || call.created_at;
+                                  if (!dateStr) return 'N/A';
+                                  // Extract date: YYYY-MM-DD from timestamp
+                                  const datePart = dateStr.substring(0, 10);
+                                  const [year, month, day] = datePart.split('-');
+                                  return `${day}-${month}-${year.substring(2)}`;
+                                })()}
+                              </div>
                               <div className="text-sm text-gray-500">
-                                {new Date(call.created_at).toLocaleTimeString('en-GB', { 
-                                  hour: '2-digit', 
-                                  minute: '2-digit' 
-                                })}
+                                {(() => {
+                                  const dateStr = call.call_date || call.created_at;
+                                  if (!dateStr) return '--';
+                                  // Extract time: HH:MM from timestamp
+                                  const timePart = dateStr.substring(11, 16);
+                                  return timePart;
+                                })()}
                               </div>
                             </TableCell>
                             <TableCell className="text-gray-600">
