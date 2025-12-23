@@ -217,6 +217,11 @@ export default function ManagerDashboard() {
     email: boolean;
     password: boolean;
   }>({ email: false, password: false });
+  // Reset call history page to 1 when filters change
+  useEffect(() => {
+    setCallHistoryPage(1);
+  }, [callDateFilter, selectedEmployeeFilter, callOutcomeFilter, callSearch]);
+
   const [newEmployee, setNewEmployee] = useState({
     email: "",
     password: "",
@@ -3212,7 +3217,8 @@ export default function ManagerDashboard() {
                           .map(a => a.recordings?.call_history_id)
                           .filter(Boolean)
                       );
-                      return baseFilteredCalls.filter(c => followUpCallIds.has(c.id)).length;
+                      // Include calls with follow-up details OR no-answer outcome
+                      return baseFilteredCalls.filter(c => followUpCallIds.has(c.id) || c.outcome === 'no-answer').length;
                     })()})
                   </button>
                   <button
@@ -3243,10 +3249,10 @@ export default function ManagerDashboard() {
                   </TableHeader>
                   <TableBody>
                     {(() => {
-                      // Filter calls based on filters
-                      let filteredCalls = calls;
+                      // Start with baseFilteredCalls which already has date, employee, search filters applied
+                      let filteredCalls = baseFilteredCalls.slice();
 
-                      // Filter by outcome from call_history table
+                      // Apply outcome filter
                       if (callOutcomeFilter !== 'all') {
                         if (callOutcomeFilter === 'followup') {
                           // Get call IDs from analyses that have valid follow-up details
@@ -3261,76 +3267,14 @@ export default function ManagerDashboard() {
                               .map(a => a.recordings?.call_history_id)
                               .filter(Boolean)
                           );
-                          filteredCalls = filteredCalls.filter(call => followUpCallIds.has(call.id));
+                          // Include calls with follow-up details OR no-answer outcome
+                          filteredCalls = filteredCalls.filter(call => followUpCallIds.has(call.id) || call.outcome === 'no-answer');
                         } else {
                           filteredCalls = filteredCalls.filter(call => call.outcome === callOutcomeFilter);
                         }
                       }
 
-                      // Filter by employee & search & date - Use date-only comparison to match dateFilteredCalls
-                      // Employee filter
-                      if (selectedEmployeeFilter && selectedEmployeeFilter !== 'all') {
-                        filteredCalls = filteredCalls.filter(call => call.employee_id === selectedEmployeeFilter);
-                      }
-
-                      // Search filter (lead name or contact)
-                      if (callSearch && callSearch.trim() !== '') {
-                        const q = callSearch.trim().toLowerCase();
-                        filteredCalls = filteredCalls.filter(call => {
-                          const leadName = (call.leads?.name || '').toLowerCase();
-                          const contact = (call.leads?.contact || '').toLowerCase();
-                          return leadName.includes(q) || contact.includes(q);
-                        });
-                      }
-
-                      // Filter by date - Use date-only comparison to match dateFilteredCalls
-                      const now = new Date();
-                      if (callDateFilter === 'today') {
-                        // Compare only the date part (YYYY-MM-DD)
-                        const todayDateStr = now.toISOString().split('T')[0];
-                        filteredCalls = filteredCalls.filter(call => {
-                          if (!call.call_date) return false;
-                          const callDate = new Date(call.call_date);
-                          const callDateStr = callDate.toISOString().split('T')[0];
-                          return callDateStr === todayDateStr;
-                        });
-                      } else if (callDateFilter === 'yesterday') {
-                        // Compare only the date part for yesterday (YYYY-MM-DD)
-                        const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-                        const yesterdayDateStr = yesterday.toISOString().split('T')[0];
-                        filteredCalls = filteredCalls.filter(call => {
-                          if (!call.call_date) return false;
-                          const callDate = new Date(call.call_date);
-                          const callDateStr = callDate.toISOString().split('T')[0];
-                          return callDateStr === yesterdayDateStr;
-                        });
-                      } else if (callDateFilter === 'week') {
-                        // Monday to Friday of current week - MATCHES DASHBOARD
-                        const dayOfWeek = now.getDay();
-                        const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-                        const weekStart = new Date(now);
-                        weekStart.setDate(now.getDate() - daysFromMonday);
-                        weekStart.setHours(0, 0, 0, 0);
-                        const weekEnd = new Date(weekStart);
-                        weekEnd.setDate(weekStart.getDate() + 4); // Friday
-                        weekEnd.setHours(23, 59, 59, 999);
-                        filteredCalls = filteredCalls.filter(call => {
-                          const callTime = new Date(call.call_date || call.created_at).getTime();
-                          return callTime >= weekStart.getTime() && callTime <= weekEnd.getTime();
-                        });
-                      } else if (callDateFilter === 'month') {
-                        // Entire current month - MATCHES DASHBOARD
-                        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-                        monthStart.setHours(0, 0, 0, 0);
-                        const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-                        monthEnd.setHours(23, 59, 59, 999);
-                        filteredCalls = filteredCalls.filter(call => {
-                          const callTime = new Date(call.call_date || call.created_at).getTime();
-                          return callTime >= monthStart.getTime() && callTime <= monthEnd.getTime();
-                        });
-                      }
-
-                      // Sorting
+                      // Apply sorting
                       if (callSortBy === 'date') {
                         filteredCalls.sort((a: any, b: any) => {
                           const at = new Date(a.call_date || a.created_at).getTime();
@@ -3459,29 +3403,22 @@ export default function ManagerDashboard() {
               
               {/* Call History Pagination */}
               {(() => {
-                // Calculate total for pagination display
-                let filteredCalls = calls;
+                // Start with baseFilteredCalls which already has date, employee, search filters applied
+                let filteredCalls = baseFilteredCalls.slice();
+                
+                // Apply outcome filter (same logic as table)
                 if (callOutcomeFilter !== 'all') {
                   if (callOutcomeFilter === 'followup') {
                     const followUpCallIds = new Set(
                       analyses.filter(a => a.follow_up_details && a.follow_up_details.trim().length > 0 && !a.follow_up_details.toLowerCase().includes('irrelevant according to transcript') && a.recordings?.call_history_id).map(a => a.recordings?.call_history_id).filter(Boolean)
                     );
-                    filteredCalls = filteredCalls.filter(call => followUpCallIds.has(call.id));
+                    // Include calls with follow-up details OR no-answer outcome
+                    filteredCalls = filteredCalls.filter(call => followUpCallIds.has(call.id) || call.outcome === 'no-answer');
                   } else {
                     filteredCalls = filteredCalls.filter(call => call.outcome === callOutcomeFilter);
                   }
                 }
-                if (selectedEmployeeFilter && selectedEmployeeFilter !== 'all') {
-                  filteredCalls = filteredCalls.filter(call => call.employee_id === selectedEmployeeFilter);
-                }
-                if (callSearch && callSearch.trim() !== '') {
-                  const q = callSearch.trim().toLowerCase();
-                  filteredCalls = filteredCalls.filter(call => {
-                    const leadName = (call.leads?.name || '').toLowerCase();
-                    const contact = (call.leads?.contact || '').toLowerCase();
-                    return leadName.includes(q) || contact.includes(q);
-                  });
-                }
+                
                 const totalItems = filteredCalls.length;
                 const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
                 
