@@ -2247,6 +2247,121 @@ Please provide insights that are specific, actionable, and tailored to these met
     return callDateFilteredCalls.slice();
   }, [callDateFilteredCalls]);
 
+  // Compute tab counts using the same date/search filters as the visible list,
+  // but force outcome = 'all' so counts remain stable when the user switches tabs.
+  const callTabCounts = useMemo(() => {
+    // Start with the same base as visibleFilteredCalls but DO NOT apply the outcome filter
+    let filtered = calls.slice();
+
+    const getLocalDateStr = (date: Date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const extractDateStr = (dateString: string): string => {
+      if (!dateString) return '';
+      return dateString.substring(0, 10);
+    };
+
+    if (selectedCallDate) {
+      const selectedDateStr = getLocalDateStr(selectedCallDate);
+      filtered = filtered.filter(call => {
+        const dateToUse = call.call_date || call.created_at;
+        if (!dateToUse) return false;
+        const callDateStr = extractDateStr(dateToUse);
+        return callDateStr === selectedDateStr;
+      });
+    }
+
+    // Apply date range filter used by header controls
+    const now = new Date();
+    if (callDateFilter === 'today') {
+      const todayStr = getLocalDateStr(now);
+      filtered = filtered.filter(call => {
+        const dateToUse = call.call_date || call.created_at;
+        return dateToUse && extractDateStr(dateToUse) === todayStr;
+      });
+    } else if (callDateFilter === 'yesterday') {
+      const yesterday = new Date(now);
+      yesterday.setDate(now.getDate() - 1);
+      const yesterdayStr = getLocalDateStr(yesterday);
+      filtered = filtered.filter(call => {
+        const dateToUse = call.call_date || call.created_at;
+        return dateToUse && extractDateStr(dateToUse) === yesterdayStr;
+      });
+    } else if (callDateFilter === 'week') {
+      const weekAgo = new Date(now);
+      weekAgo.setDate(now.getDate() - 6);
+      const weekAgoStr = getLocalDateStr(weekAgo);
+      const todayStr = getLocalDateStr(now);
+      filtered = filtered.filter(call => {
+        const dateToUse = call.call_date || call.created_at;
+        if (!dateToUse) return false;
+        const callDateStr = extractDateStr(dateToUse);
+        return callDateStr >= weekAgoStr && callDateStr <= todayStr;
+      });
+    } else if (callDateFilter === 'month') {
+      const monthAgo = new Date(now);
+      monthAgo.setDate(now.getDate() - 29);
+      const monthAgoStr = getLocalDateStr(monthAgo);
+      const todayStr = getLocalDateStr(now);
+      filtered = filtered.filter(call => {
+        const dateToUse = call.call_date || call.created_at;
+        if (!dateToUse) return false;
+        const callDateStr = extractDateStr(dateToUse);
+        return callDateStr >= monthAgoStr && callDateStr <= todayStr;
+      });
+    }
+
+    // Search filter
+    if (callSearch && callSearch.trim() !== '') {
+      const q = callSearch.trim().toLowerCase();
+      filtered = filtered.filter(call => {
+        const leadName = (call.leads?.name || '').toLowerCase();
+        const contact = (call.leads?.contact || '').toLowerCase();
+        const agent = (call.employee_id || '').toLowerCase();
+        return leadName.includes(q) || contact.includes(q) || agent.includes(q);
+      });
+    }
+
+    const followUpCallIds = new Set(
+      analyses
+        .filter(a => {
+          const hasFollowUp = a.follow_up_details && a.follow_up_details.trim().length > 0 && !a.follow_up_details.toLowerCase().includes('irrelevant according to transcript');
+          return hasFollowUp && a.recordings?.call_history_id;
+        })
+        .map(a => a.recordings?.call_history_id)
+        .filter(Boolean)
+    );
+
+    const relevantCount = filtered.filter(c => {
+      const outcome = (c.outcome || '').toLowerCase();
+      const isFailed = outcome === 'failed';
+      const isNoAnswer = outcome === 'no-answer';
+      const isBusy = outcome === 'busy';
+      return (c.exotel_duration || 0) > 30 && !isFailed && !isNoAnswer && !isBusy;
+    }).length;
+
+    const irrelevantCount = filtered.filter(c => {
+      const outcome = (c.outcome || '').toLowerCase();
+      const isFailed = outcome === 'failed';
+      const isNoAnswer = outcome === 'no-answer';
+      const isBusy = outcome === 'busy';
+      return (c.exotel_duration || 0) <= 30 && !isFailed && !isNoAnswer && !isBusy;
+    }).length;
+
+    return {
+      all: filtered.length,
+      relevant: relevantCount,
+      irrelevant: irrelevantCount,
+      followup: filtered.filter(c => followUpCallIds.has(c.id) || c.outcome === 'no-answer').length,
+      busy: filtered.filter(c => (c.outcome || '').toLowerCase() === 'busy').length,
+      Failed: filtered.filter(c => (c.outcome || '').toLowerCase() === 'failed').length,
+    };
+  }, [calls, analyses, callDateFilter, customDateRange?.startDate, customDateRange?.endDate, callSearch, selectedCallDate]);
+
   const dateFilteredDailyProductivity = useMemo(() => {
     const now = new Date();
     
@@ -3705,7 +3820,7 @@ Please provide insights that are specific, actionable, and tailored to these met
                         : 'border-transparent text-gray-500 hover:text-gray-700'
                     }`}
                   >
-                    All ({visibleFilteredCalls.length})
+                    All ({callTabCounts.all})
                   </button>
                   <button
                     onClick={() => setCallOutcomeFilter('relevant')}
@@ -3715,13 +3830,7 @@ Please provide insights that are specific, actionable, and tailored to these met
                         : 'border-transparent text-gray-500 hover:text-gray-700'
                     }`}
                   >
-                    Relevant ({visibleFilteredCalls.filter(c => {
-                      const outcome = (c.outcome || '').toLowerCase();
-                      const isFailed = outcome === 'failed';
-                      const isNoAnswer = outcome === 'no-answer';
-                      const isBusy = outcome === 'busy';
-                      return (c.exotel_duration || 0) > 30 && !isFailed && !isNoAnswer && !isBusy;
-                    }).length})
+                    Relevant ({callTabCounts.relevant})
                   </button>
                   <button
                     onClick={() => setCallOutcomeFilter('irrelevant')}
@@ -3731,13 +3840,7 @@ Please provide insights that are specific, actionable, and tailored to these met
                         : 'border-transparent text-gray-500 hover:text-gray-700'
                     }`}
                   >
-                    Irrelevant ({visibleFilteredCalls.filter(c => {
-                      const outcome = (c.outcome || '').toLowerCase();
-                      const isFailed = outcome === 'failed';
-                      const isNoAnswer = outcome === 'no-answer';
-                      const isBusy = outcome === 'busy';
-                      return (c.exotel_duration || 0) <= 30 && !isFailed && !isNoAnswer && !isBusy;
-                    }).length})
+                    Irrelevant ({callTabCounts.irrelevant})
                   </button>
                   <button
                     onClick={() => setCallOutcomeFilter('followup')}
@@ -3747,20 +3850,7 @@ Please provide insights that are specific, actionable, and tailored to these met
                         : 'border-transparent text-gray-500 hover:text-gray-700'
                     }`}
                   >
-                    Follow-up ({(() => {
-                      const followUpCallIds = new Set(
-                        analyses
-                          .filter(a => {
-                            const hasFollowUp = a.follow_up_details && 
-                              a.follow_up_details.trim().length > 0 && 
-                              !a.follow_up_details.toLowerCase().includes('irrelevant according to transcript');
-                            return hasFollowUp && a.recordings?.call_history_id;
-                          })
-                          .map(a => a.recordings?.call_history_id)
-                          .filter(Boolean)
-                      );
-                      return visibleFilteredCalls.filter(c => followUpCallIds.has(c.id) || c.outcome === 'no-answer').length;
-                    })()})
+                    Follow-up ({callTabCounts.followup})
                   </button>
                   <button
                     onClick={() => setCallOutcomeFilter('busy')}
@@ -3770,7 +3860,7 @@ Please provide insights that are specific, actionable, and tailored to these met
                         : 'border-transparent text-gray-500 hover:text-gray-700'
                     }`}
                   >
-                    Busy ({visibleFilteredCalls.filter(c => (c.outcome || '').toLowerCase() === 'busy').length})
+                    Busy ({callTabCounts.busy})
                   </button>
                   <button
                     onClick={() => setCallOutcomeFilter('Failed')}
@@ -3780,7 +3870,7 @@ Please provide insights that are specific, actionable, and tailored to these met
                         : 'border-transparent text-gray-500 hover:text-gray-700'
                     }`}
                   >
-                    Failed ({visibleFilteredCalls.filter(c => (c.outcome || '').toLowerCase() === 'failed').length})
+                    Failed ({callTabCounts.Failed})
                   </button>
                 </div>
               </div>

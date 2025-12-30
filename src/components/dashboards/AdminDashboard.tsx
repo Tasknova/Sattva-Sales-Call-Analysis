@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { formatNumber } from "@/lib/utils";
 import { format } from "date-fns";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -174,6 +174,7 @@ export default function AdminDashboard() {
   const [analysisSearchTerm, setAnalysisSearchTerm] = useState("");
   const [selectedAnalysisEmployee, setSelectedAnalysisEmployee] = useState<string>("all");
   const [selectedClosureProbability, setSelectedClosureProbability] = useState<string>("all");
+  const [selectedAnalysisStatus, setSelectedAnalysisStatus] = useState<string>('all');
   // Call history specific filters (match Manager dashboard)
   const [callDateFilter, setCallDateFilter] = useState<'all' | 'today' | 'yesterday' | 'week' | 'month'>('all');
   const [selectedCallDate, setSelectedCallDate] = useState<Date | undefined>(undefined);
@@ -293,6 +294,22 @@ export default function AdminDashboard() {
   const bulkAssignClients = useBulkAssignClients();
   const { data: managerClientAssignments } = useManagerClientAssignments();
   const unassignClient = useUnassignClientFromManager();
+
+  const location = useLocation();
+
+  useEffect(() => {
+    // If URL contains ?tab=..., activate corresponding sidebar item
+    try {
+      const params = new URLSearchParams(location.search);
+      const tab = params.get('tab');
+      if (tab) {
+        const allowed = ['overview','managers','employees','team-performance','leads','clients','jobs','call-history','analysis','reports','settings','profile'];
+        if (allowed.includes(tab)) setActiveSidebarItem(tab);
+      }
+    } catch (err) {
+      // ignore
+    }
+  }, [location.search]);
 
   // Settings state
   const [companySettings, setCompanySettings] = useState({
@@ -2340,7 +2357,8 @@ export default function AdminDashboard() {
       matchesProbability = (analysis.closure_probability || 0) < 40;
     }
 
-    return matchesSearch && matchesEmployee && matchesProbability;
+    const matchesStatus = selectedAnalysisStatus === 'all' || analysis.status === selectedAnalysisStatus;
+    return matchesSearch && matchesEmployee && matchesProbability && matchesStatus;
   });
 
   // Reset call history page to 1 when filters change
@@ -5098,11 +5116,25 @@ export default function AdminDashboard() {
                       <option value="medium">Medium (40-69%)</option>
                       <option value="low">Low (&lt;40%)</option>
                     </select>
+                    {/* Status Filter */}
+                    <select
+                      value={selectedAnalysisStatus}
+                      onChange={(e) => setSelectedAnalysisStatus(e.target.value)}
+                      className="px-3 py-2 border border-input bg-background rounded-md text-sm"
+                    >
+                      <option value="all">All Statuses</option>
+                      <option value="pending">Pending</option>
+                      <option value="processing">Processing</option>
+                      <option value="completed">Completed</option>
+                      <option value="failed">Failed</option>
+                    </select>
 
                     {/* Results Count */}
-                    <div className="flex items-center justify-center text-sm text-muted-foreground border rounded-md px-3 py-2 bg-muted/30">
-                      <strong className="mr-1">{filteredAnalyses.length}</strong> analysis{filteredAnalyses.length !== 1 ? 'es' : ''} found
-                    </div>
+                        <div className="flex items-center gap-6 text-sm text-muted-foreground border rounded-md px-3 py-2 bg-muted/30 flex-row flex-nowrap">
+                          <div className="text-sm font-medium whitespace-nowrap">Total: <strong className="ml-1">{analyses.length}</strong></div>
+                          <div className="text-sm whitespace-nowrap">Analyzed: <strong className="ml-1">{analyses.filter(a => a.status === 'completed').length}</strong></div>
+                          <div className="text-sm whitespace-nowrap">Pending: <strong className="ml-1">{analyses.filter(a => a.status === 'pending' || a.status === 'processing').length}</strong></div>
+                        </div>
                   </div>
                 </CardContent>
               </Card>
@@ -5124,7 +5156,7 @@ export default function AdminDashboard() {
                     <>
                       <div className="mb-4">
                         <p className="text-sm text-muted-foreground">
-                          Total: {formatNumber(filteredAnalyses.length)} analyses
+                          Total: {formatNumber(analyses.length)} analyses
                         </p>
                       </div>
                       <div className="space-y-4">

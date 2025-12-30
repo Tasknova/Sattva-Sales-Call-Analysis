@@ -46,6 +46,7 @@ export default function EmployeeAnalysisPage() {
   const [sortBy, setSortBy] = useState<'date' | 'closure'>('date');
   const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'yesterday' | 'this_week' | 'this_month' | 'specific'>('all');
   const [specificDate, setSpecificDate] = useState<Date | undefined>(undefined);
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'processing' | 'completed' | 'failed'>('all');
   const [calendarOpen, setCalendarOpen] = useState(false);
 
   useEffect(() => {
@@ -173,6 +174,9 @@ export default function EmployeeAnalysisPage() {
         const leadName = analysis.call_history?.leads?.name?.toLowerCase() || '';
         const matchesSearch = leadName.includes(searchTerm.toLowerCase());
 
+        // Status filter
+        const matchesStatus = statusFilter === 'all' || analysis.status === statusFilter;
+
         // Date filter
         let matchesDate = true;
         const analysisDate = analysis.created_at ? new Date(analysis.created_at) : null;
@@ -212,7 +216,7 @@ export default function EmployeeAnalysisPage() {
           }
         }
 
-        return matchesSearch && matchesDate;
+        return matchesSearch && matchesDate && matchesStatus;
       })
       .sort((a, b) => {
         if (sortBy === 'date') {
@@ -222,7 +226,7 @@ export default function EmployeeAnalysisPage() {
         }
         return 0;
       });
-  }, [analyses, searchTerm, dateFilter, specificDate, sortBy]);
+  }, [analyses, searchTerm, dateFilter, specificDate, sortBy, statusFilter]);
 
   // Calculate statistics
   const totalAnalyses = analyses.length;
@@ -250,12 +254,21 @@ export default function EmployeeAnalysisPage() {
           <h1 className="text-3xl font-bold text-gray-900">Call Analyses</h1>
           <p className="text-muted-foreground mt-1">Track and analyze your call performance</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="px-3 py-1">
-            <BarChart3 className="h-3 w-3 mr-1" />
-            Total Records - {filteredAnalyses.length}
-          </Badge>
-        </div>
+              <div className="flex items-center gap-4">
+                <div className="text-sm text-gray-600">
+                  <strong>{filteredAnalyses.length}</strong> records found
+                </div>
+                {(() => {
+                  const analyzedCount = filteredAnalyses.filter(a => a.status === 'completed').length;
+                  const pendingCount = filteredAnalyses.filter(a => a.status === 'pending' || a.status === 'processing').length;
+                  return (
+                    <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                      <span>Analyzed: <strong className="text-gray-900">{analyzedCount}</strong></span>
+                      <span>Pending: <strong className="text-gray-900">{pendingCount}</strong></span>
+                    </div>
+                  );
+                })()}
+              </div>
       </div>
 
       {/* Statistics Cards */}
@@ -399,6 +412,18 @@ export default function EmployeeAnalysisPage() {
               >
                 This Month
               </Button>
+              {/* Status Filter */}
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value as any)}
+                className="px-3 py-2 border border-input bg-background rounded-md text-sm"
+              >
+                <option value="all">All Statuses</option>
+                <option value="pending">Pending</option>
+                <option value="processing">Processing</option>
+                <option value="completed">Completed</option>
+                <option value="failed">Failed</option>
+              </select>
               <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
                 <PopoverTrigger asChild>
                   <Button

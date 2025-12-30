@@ -36,7 +36,7 @@ export default function LoginOptions({ onAdminLogin, onManagerLogin, onEmployeeL
     {
       id: 'employee',
       title: 'Employee Login',
-      description: 'Team member who handles assigned leads and makes calls',
+      description: 'Team member handles leads and makes calls',
       icon: User,
       color: 'purple',
       action: onEmployeeLogin,

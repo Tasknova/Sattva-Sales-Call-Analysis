@@ -1,5 +1,6 @@
 // Updated ManagerDashboard - Fixed data fetching and employee creation
 import { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { formatNumber } from "@/lib/utils";
@@ -134,6 +135,7 @@ interface Analysis {
 export default function ManagerDashboard() {
   const { user, userRole, company, signOut } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   
   // Session timeout: 30 minutes for manager
   useSessionTimeout({ timeoutMinutes: 30, warningMinutes: 5 });
@@ -167,6 +169,7 @@ export default function ManagerDashboard() {
   const [analysisSearchTerm, setAnalysisSearchTerm] = useState("");
   const [selectedAnalysisEmployee, setSelectedAnalysisEmployee] = useState<string>("all");
   const [selectedClosureProbability, setSelectedClosureProbability] = useState<string>("all");
+  const [selectedAnalysisStatus, setSelectedAnalysisStatus] = useState<string>('all');
   const [isDeleteLeadModalOpen, setIsDeleteLeadModalOpen] = useState(false);
   const [leadToDelete, setLeadToDelete] = useState<any>(null);
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
@@ -1583,7 +1586,8 @@ export default function ManagerDashboard() {
       matchesProbability = (analysis.closure_probability || 0) < 40;
     }
     
-    return matchesSearch && matchesEmployee && matchesProbability;
+    const matchesStatus = selectedAnalysisStatus === 'all' || analysis.status === selectedAnalysisStatus;
+    return matchesSearch && matchesEmployee && matchesProbability && matchesStatus;
   });
 
   console.log('Manager Dashboard - Filter debug:', {
@@ -3672,11 +3676,20 @@ export default function ManagerDashboard() {
                   <h1 className="text-3xl font-bold text-gray-900">Team Call Analyses</h1>
                   <p className="text-muted-foreground mt-1">Track and analyze your team's call performance</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="px-3 py-1">
-                    <BarChart3 className="h-3 w-3 mr-1" />
-                    {formatNumber(filteredAnalyses.length)} Analyses
-                  </Badge>
+                <div className="flex items-center gap-4">
+                  <div className="text-sm text-gray-600">
+                    <strong>{filteredAnalyses.length}</strong> records found
+                  </div>
+                  {(() => {
+                    const analyzedCount = filteredAnalyses.filter(a => a.status === 'completed').length;
+                    const pendingCount = filteredAnalyses.filter(a => a.status === 'pending' || a.status === 'processing').length;
+                    return (
+                      <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                        <span>Analyzed: <strong className="text-gray-900">{analyzedCount}</strong></span>
+                        <span>Pending: <strong className="text-gray-900">{pendingCount}</strong></span>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -3771,6 +3784,18 @@ export default function ManagerDashboard() {
                       <option value="medium">Medium (40-69%)</option>
                       <option value="low">Low (&lt;40%)</option>
                     </select>
+                    {/* Status Filter */}
+                    <select
+                      value={selectedAnalysisStatus}
+                      onChange={(e) => setSelectedAnalysisStatus(e.target.value)}
+                      className="px-3 py-2 border border-input bg-background rounded-md text-sm"
+                    >
+                      <option value="all">All Statuses</option>
+                      <option value="pending">Pending</option>
+                      <option value="processing">Processing</option>
+                      <option value="completed">Completed</option>
+                      <option value="failed">Failed</option>
+                    </select>
                   </div>
                 </CardContent>
               </Card>
@@ -3858,8 +3883,16 @@ export default function ManagerDashboard() {
 
                           {/* Right Section - View Button */}
                           <div className="ml-4">
-                            <Button variant="ghost" size="sm">
-                              <Eye className="h-4 w-4" />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                window.open(`/analysis/${analysis.id}`, '_blank');
+                              }}
+                            >
+                              <Eye className="h-4 w-4 mr-2" />
+                              View Analysis
                             </Button>
                           </div>
                         </div>
