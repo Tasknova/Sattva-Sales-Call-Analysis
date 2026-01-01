@@ -52,6 +52,7 @@ interface ClientsPageProps {
 export default function ClientsPage({ managerId, readOnly = false }: ClientsPageProps = {}) {
   const { company } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [deletingClient, setDeletingClient] = useState<Client | null>(null);
@@ -92,6 +93,19 @@ export default function ClientsPage({ managerId, readOnly = false }: ClientsPage
     client.industry?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     client.contact_person?.toLowerCase().includes(searchTerm.toLowerCase())
   ) || [];
+
+  // Pagination
+  const itemsPerPage = 10;
+  const totalPages = Math.ceil(filteredClients.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedClients = filteredClients.slice(startIndex, endIndex);
+
+  // Reset to page 1 when search changes
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    setCurrentPage(1);
+  };
 
   const handleOpenAddModal = () => {
     setFormData({
@@ -306,7 +320,7 @@ export default function ClientsPage({ managerId, readOnly = false }: ClientsPage
               <Input
                 placeholder="Search clients..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
                 className="pl-8"
               />
             </div>
@@ -327,21 +341,22 @@ export default function ClientsPage({ managerId, readOnly = false }: ClientsPage
               )}
             </div>
           ) : (
+            <>
             <div className="rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Company Name</TableHead>
-                    <TableHead>Industry</TableHead>
-                    <TableHead>Contact Person</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Phone</TableHead>
+                    {!managerId && <TableHead>Industry</TableHead>}
+                    {!managerId && <TableHead>Contact Person</TableHead>}
+                    {!managerId && <TableHead>Email</TableHead>}
+                    {!managerId && <TableHead>Phone</TableHead>}
                     <TableHead>Status</TableHead>
                     {!managerId && <TableHead className="w-[50px]">Actions</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredClients.map((client) => (
+                  {paginatedClients.map((client) => (
                     <TableRow key={client.id}>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
@@ -349,24 +364,24 @@ export default function ClientsPage({ managerId, readOnly = false }: ClientsPage
                           {client.name}
                         </div>
                       </TableCell>
-                      <TableCell>{client.industry || "-"}</TableCell>
-                      <TableCell>{client.contact_person || "-"}</TableCell>
-                      <TableCell>
+                      {!managerId && <TableCell>{client.industry || "-"}</TableCell>}
+                      {!managerId && <TableCell>{client.contact_person || "-"}</TableCell>}
+                      {!managerId && <TableCell>
                         {client.email ? (
                           <div className="flex items-center gap-2">
                             <Mail className="h-4 w-4 text-muted-foreground" />
                             {client.email}
                           </div>
                         ) : "-"}
-                      </TableCell>
-                      <TableCell>
+                      </TableCell>}
+                      {!managerId && <TableCell>
                         {client.phone ? (
                           <div className="flex items-center gap-2">
                             <Phone className="h-4 w-4 text-muted-foreground" />
                             {client.phone}
                           </div>
                         ) : "-"}
-                      </TableCell>
+                      </TableCell>}
                       <TableCell>
                         <Badge variant={client.is_active ? "default" : "secondary"}>
                           {client.is_active ? "Active" : "Inactive"}
@@ -401,6 +416,47 @@ export default function ClientsPage({ managerId, readOnly = false }: ClientsPage
                 </TableBody>
               </Table>
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-2 py-4">
+                <div className="text-sm text-muted-foreground">
+                  Showing {startIndex + 1} to {Math.min(endIndex, filteredClients.length)} of {filteredClients.length} clients
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    Previous
+                  </Button>
+                  <div className="flex items-center space-x-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                      <Button
+                        key={page}
+                        variant={currentPage === page ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setCurrentPage(page)}
+                        className="w-8"
+                      >
+                        {page}
+                      </Button>
+                    ))}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
           )}
         </CardContent>
       </Card>

@@ -308,11 +308,37 @@ export default function ManagerDashboard() {
       }
       
       case 'week': {
-        // Last 7 days including today
-        const weekAgo = new Date(now);
-        weekAgo.setDate(weekAgo.getDate() - 6);
-        const weekAgoStr = getLocalDateStr(weekAgo);
-        return callDateStr >= weekAgoStr && callDateStr <= todayStr;
+        // Previous week Monday to Friday ONLY (compare local YYYY-MM-DD strings)
+        const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+        
+        // Calculate this week's Monday at midnight
+        const currentMonday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // If Sunday, go back 6 days
+        currentMonday.setDate(currentMonday.getDate() - daysFromMonday);
+        currentMonday.setHours(0, 0, 0, 0);
+        
+        // Previous week Monday = current Monday - 7 days
+        const previousMonday = new Date(currentMonday);
+        previousMonday.setDate(currentMonday.getDate() - 7);
+        previousMonday.setHours(0, 0, 0, 0);
+        
+        // Previous week Friday = previous Monday + 4 days
+        const previousFriday = new Date(previousMonday);
+        previousFriday.setDate(previousMonday.getDate() + 4);
+        previousFriday.setHours(23, 59, 59, 999);
+        
+        const previousMondayStr = getLocalDateStr(previousMonday);
+        const previousFridayStr = getLocalDateStr(previousFriday);
+        
+        // Double-check: Only Monday-Friday, explicitly exclude Saturday & Sunday
+        const callDate = new Date(callDateStr + 'T12:00:00'); // Use noon to avoid timezone issues
+        const callDayOfWeek = callDate.getDay(); // 0=Sun, 6=Sat
+        if (callDayOfWeek === 0 || callDayOfWeek === 6) {
+          return false; // Exclude weekends
+        }
+        
+        const inRange = callDateStr >= previousMondayStr && callDateStr <= previousFridayStr;
+        return inRange;
       }
       
       case 'month': {
@@ -335,38 +361,16 @@ export default function ManagerDashboard() {
 
   // Filter data based on date range for overview tab
   const dateFilteredCallOutcomes = callOutcomes.filter(outcome => {
-    const result = isDateInRange(outcome.call_date || outcome.created_at);
-    if (dateRangeFilter === 'today') {
-      console.log('ManagerDashboard Filter:', {
-        dateRangeFilter,
-        call_date: outcome.call_date,
-        created_at: outcome.created_at,
-        result
-      });
-    }
-    return result;
+    return isDateInRange(outcome.call_date || outcome.created_at);
   });
-  
-  console.log('ManagerDashboard - All calls:', calls.length);
-  console.log('ManagerDashboard - dateRangeFilter:', dateRangeFilter);
-  console.log('ManagerDashboard - todayStr:', getTodayStr());
-  
-  // Log first call to see format
-  if (calls.length > 0) {
-    console.log('ManagerDashboard - First call sample:', {
-      call_date: calls[0].call_date,
-      extracted: extractDateStr(calls[0].call_date || calls[0].created_at || '')
-    });
-  }
   
   const dateFilteredCalls = calls.filter(call => {
     return isDateInRange(call.call_date || call.created_at);
   });
   
-  console.log('ManagerDashboard - Filtered calls:', dateFilteredCalls.length);
   const dateFilteredAnalyses = analyses.filter(analysis => isDateInRange(analysis.created_at));
 
-  // Calls over last 7 days (for line chart)
+  // Calls over last 7 days (for line chart) - Always shows last 7 days regardless of filter
   const callsLast7Days = useMemo(() => {
     const now = new Date();
     const days = [] as { date: string; count: number }[];
@@ -374,11 +378,11 @@ export default function ManagerDashboard() {
       const d = new Date(now);
       d.setDate(now.getDate() - i);
       const key = d.toISOString().split('T')[0];
-      const count = dateFilteredCalls.filter(c => (new Date(c.call_date || c.created_at).toISOString().split('T')[0]) === key && (callsChartEmployeeFilter === 'all' || c.employee_id === callsChartEmployeeFilter)).length;
+      const count = calls.filter(c => (new Date(c.call_date || c.created_at).toISOString().split('T')[0]) === key && (callsChartEmployeeFilter === 'all' || c.employee_id === callsChartEmployeeFilter)).length;
       days.push({ date: key, count });
     }
     return days;
-  }, [dateFilteredCalls, callsChartEmployeeFilter]);
+  }, [calls, callsChartEmployeeFilter]);
 
   // Recent call quality scores for selected employee
   const recentQualityScores = useMemo(() => {
@@ -450,14 +454,20 @@ export default function ManagerDashboard() {
         const y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1).toISOString().split('T')[0];
         return (new Date(callDate).toISOString().split('T')[0]) === y;
       } else if (callDateFilter === 'week') {
-        // Last 7 days including today
-        const sevenDaysAgo = new Date(now);
-        sevenDaysAgo.setDate(now.getDate() - 6);
-        sevenDaysAgo.setHours(0,0,0,0);
-        const today = new Date(now);
-        today.setHours(23,59,59,999);
+        // Previous week Monday to Thursday (Mon-Thu, excluding Friday)
+        const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon, ..., 6=Sat
+        const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+        const currentMonday = new Date(now);
+        currentMonday.setDate(now.getDate() - daysFromMonday);
+        currentMonday.setHours(0,0,0,0);
+        const previousMonday = new Date(currentMonday);
+        previousMonday.setDate(currentMonday.getDate() - 7);
+        previousMonday.setHours(0,0,0,0);
+        const previousFriday = new Date(previousMonday);
+        previousFriday.setDate(previousMonday.getDate() + 4);
+        previousFriday.setHours(23,59,59,999);
         const t = new Date(callDate).getTime();
-        return t >= sevenDaysAgo.getTime() && t <= today.getTime();
+        return t >= previousMonday.getTime() && t <= previousFriday.getTime();
       } else if (callDateFilter === 'month') {
         const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
         monthStart.setHours(0,0,0,0);
@@ -643,14 +653,12 @@ export default function ManagerDashboard() {
 
       // Fetch call outcomes made by employees under this manager
       // NOTE: call_history.employee_id stores user_id, not employees.id
-      console.log('Employee user_ids for call outcomes:', formattedEmployees.map(emp => emp.user_id));
       
       let callsData: any[] = [];
       let callsError = null;
       
       if (formattedEmployees.length > 0) {
         const employeeUserIds = formattedEmployees.map(emp => emp.user_id);
-        console.log('Manager Dashboard - Fetching calls for employee user_ids:', employeeUserIds);
         
         // Fetch all calls using pagination (Supabase has 1000 row limit per request)
         let allCalls: any[] = [];
@@ -682,16 +690,22 @@ export default function ManagerDashboard() {
         }
         
         callsData = allCalls;
-        console.log('Manager Dashboard - Calls fetch result:', { totalCount: callsData.length, error: callsError });
       } else {
-        console.log('No employees found, skipping call outcomes fetch');
       }
 
       if (callsError) {
         console.error('Calls error:', callsError);
         setCalls([]);
       } else {
-        setCalls(callsData || []);
+        // Deduplicate calls based on unique ID
+        const uniqueCalls = callsData?.reduce((acc: any[], call: any) => {
+          if (!acc.find(c => c.id === call.id)) {
+            acc.push(call);
+          }
+          return acc;
+        }, []) || [];
+        
+        setCalls(uniqueCalls);
       }
 
       // Fetch call outcomes
@@ -700,7 +714,6 @@ export default function ManagerDashboard() {
       
       if (formattedEmployees.length > 0) {
         const employeeIds = formattedEmployees.map(emp => emp.id);
-        console.log('Manager Dashboard - Fetching call outcomes for employee ids:', employeeIds);
         const { data, error } = await supabase
           .from('call_outcomes')
           .select('*')
@@ -708,7 +721,6 @@ export default function ManagerDashboard() {
           .eq('company_id', userRole.company_id);
         callOutcomesData = data;
         callOutcomesError = error;
-        console.log('Manager Dashboard - Call outcomes fetch result:', { data: callOutcomesData, error: callOutcomesError });
       }
 
       if (callOutcomesError) {
@@ -724,7 +736,6 @@ export default function ManagerDashboard() {
       
       if (employeesData && employeesData.length > 0) {
         const employeeUserIds = employeesData.map(emp => emp.user_id);
-        console.log('Manager Dashboard - Fetching analyses for employee user IDs:', employeeUserIds);
         
         // Fetch all analyses using pagination
         let from = 0;
@@ -784,20 +795,12 @@ export default function ManagerDashboard() {
             }));
           }
         }
-        console.log('Manager Dashboard - Analyses fetch result:', { 
-          count: analysesData?.length || 0, 
-          data: analysesData, 
-          error: analysesError 
-        });
-      } else {
-        console.log('Manager Dashboard - No employees found, skipping analyses fetch');
       }
 
       if (analysesError) {
         console.error('Analyses error:', analysesError);
         setAnalyses([]);
       } else {
-        console.log('Manager Dashboard - Setting analyses:', analysesData?.length || 0);
         setAnalyses(analysesData || []);
       }
 
@@ -819,7 +822,6 @@ export default function ManagerDashboard() {
     if (!userRole?.company_id) return;
 
     try {
-      console.log('Creating employee with new method (not Supabase Auth)');
       const demoUserId = crypto.randomUUID();
       
       // Get manager's table ID
@@ -1590,14 +1592,6 @@ export default function ManagerDashboard() {
     return matchesSearch && matchesEmployee && matchesProbability && matchesStatus;
   });
 
-  console.log('Manager Dashboard - Filter debug:', {
-    totalAnalyses: analyses.length,
-    filteredCount: filteredAnalyses.length,
-    searchTerm: analysisSearchTerm,
-    selectedEmployee: selectedAnalysisEmployee,
-    selectedProbability: selectedClosureProbability
-  });
-
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -1795,14 +1789,14 @@ export default function ManagerDashboard() {
                         size="sm"
                         onClick={() => setDateRangeFilter('thisWeek')}
                       >
-                        This Week
+                        This Week (Mon-Fri)
                       </Button>
                       <Button 
                         variant={dateRangeFilter === 'week' ? 'default' : 'outline'}
                         size="sm"
                         onClick={() => setDateRangeFilter('week')}
                       >
-                        Last 7 Days
+                        Previous Week (Mon-Fri)
                       </Button>
                       <Button 
                         variant={dateRangeFilter === 'month' ? 'default' : 'outline'}
@@ -1857,40 +1851,51 @@ export default function ManagerDashboard() {
                   </CardContent>
                 </Card>
 
-                {/* High Closure Probability Candidates */}
-                <Card className="bg-green-100">
+                {/* Total Calls */}
+                <Card>
                   <CardContent className="pt-6 text-center">
-                    <div className="text-xl sm:text-2xl md:text-3xl font-bold whitespace-nowrap">
-                      {formatNumber(dateFilteredAnalyses.filter(a => (a.closure_probability || 0) >= 85).length)}
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-2">High Closure (85%+)</p>
+                    <div className="text-xl sm:text-2xl md:text-3xl font-bold whitespace-nowrap">{formatNumber(dateFilteredCalls.length)}</div>
+                    <p className="text-sm text-muted-foreground mt-2">Total Calls</p>
                   </CardContent>
                 </Card>
 
-                {/* High-Risk Candidates */}
-                <Card className="bg-orange-100">
+                {/* Contacted */}
+                <Card>
                   <CardContent className="pt-6 text-center">
-                    <div className="text-xl sm:text-2xl md:text-3xl font-bold whitespace-nowrap">
-                      {formatNumber(dateFilteredAnalyses.filter(a => {
-                        const risk = parseFloat(a.candidate_acceptance_risk) || 0;
-                        return risk >= 40;
-                      }).length)}
+                    <div className="text-xl sm:text-2xl md:text-3xl font-bold text-green-600 whitespace-nowrap">
+                      {formatNumber(dateFilteredCalls.filter(c => c.outcome === 'completed').length)}
                     </div>
-                    <p className="text-sm text-muted-foreground mt-2">
-                      {company?.industry?.toLowerCase() === 'hr' ? 'High-Risk (40%+)' : 'High-Risk (40%+)'}
-                    </p>
+                    <p className="text-sm text-muted-foreground mt-2">Contacted</p>
                   </CardContent>
                 </Card>
 
-                {/* Call Quality Score */}
-                <Card className="bg-purple-100">
+                {/* Follow-Ups */}
+                <Card>
                   <CardContent className="pt-6 text-center">
-                    <div className="text-xl sm:text-2xl md:text-3xl font-bold whitespace-nowrap">
-                      {dateFilteredAnalyses.length > 0
-                        ? Math.round(dateFilteredAnalyses.reduce((sum, a) => sum + (a.call_quality_score || 0), 0) / dateFilteredAnalyses.length)
-                        : 0}%
+                    <div className="text-xl sm:text-2xl md:text-3xl font-bold text-blue-600 whitespace-nowrap">
+                      {formatNumber(dateFilteredCalls.filter(c => c.outcome === 'no-answer').length)}
                     </div>
-                    <p className="text-sm text-muted-foreground mt-2">Call Quality Score</p>
+                    <p className="text-sm text-muted-foreground mt-2">Follow-Ups</p>
+                  </CardContent>
+                </Card>
+
+                {/* Failed */}
+                <Card>
+                  <CardContent className="pt-6 text-center">
+                    <div className="text-xl sm:text-2xl md:text-3xl font-bold text-red-600 whitespace-nowrap">
+                      {formatNumber(dateFilteredCalls.filter(c => (c.outcome || '').toLowerCase() === 'failed').length)}
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-2">Failed</p>
+                  </CardContent>
+                </Card>
+
+                {/* Busy */}
+                <Card>
+                  <CardContent className="pt-6 text-center">
+                    <div className="text-xl sm:text-2xl md:text-3xl font-bold text-orange-600 whitespace-nowrap">
+                      {formatNumber(dateFilteredCalls.filter(c => c.outcome === 'busy').length)}
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-2">Busy</p>
                   </CardContent>
                 </Card>
               </div>
@@ -2039,82 +2044,6 @@ export default function ManagerDashboard() {
 
                 {/* Right Column */}
                 <div className="space-y-6">
-                  {/* Candidate Status */}
-                  <div>
-                    <h3 className="text-lg font-semibold mb-4">Candidate Status</h3>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <Card>
-                        <CardContent className="pt-6 text-center">
-                          <div className="text-xl sm:text-2xl md:text-3xl font-bold whitespace-nowrap">{formatNumber(new Set(dateFilteredCalls.map(c => c.lead_id)).size)}</div>
-                          <p className="text-sm text-muted-foreground mt-2">Total Candidates</p>
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardContent className="pt-6 text-center">
-                          <div className="text-4xl font-bold text-gray-400">--</div>
-                          <p className="text-sm text-muted-foreground mt-2">Converted</p>
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardContent className="pt-6 text-center">
-                          <div className="text-4xl font-bold text-gray-400">--</div>
-                          <p className="text-sm text-muted-foreground mt-2">Pending</p>
-                        </CardContent>
-                      </Card>
-                      <Card>
-                        <CardContent className="pt-6 text-center">
-                          <div className="text-4xl font-bold text-gray-400">--</div>
-                          <p className="text-sm text-muted-foreground mt-2">Rejected</p>
-                        </CardContent>
-                      </Card>
-                    </div>
-                  </div>
-                  
-                    {/* Calls Tracking */}
-                    <div>
-                      <h3 className="text-lg font-semibold mb-4">Calls Tracking</h3>
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                        <Card>
-                          <CardContent className="pt-6 text-center">
-                            <div className="text-xl sm:text-2xl md:text-3xl font-bold whitespace-nowrap">{formatNumber(dateFilteredCalls.length)}</div>
-                            <p className="text-sm text-muted-foreground mt-2">Total Calls</p>
-                          </CardContent>
-                        </Card>
-                        <Card>
-                          <CardContent className="pt-6 text-center">
-                            <div className="text-xl sm:text-2xl md:text-3xl font-bold text-green-600 whitespace-nowrap">
-                              {formatNumber(dateFilteredCalls.filter(c => c.outcome === 'completed').length)}
-                            </div>
-                            <p className="text-sm text-muted-foreground mt-2">Contacted</p>
-                          </CardContent>
-                        </Card>
-                        <Card>
-                          <CardContent className="pt-6 text-center">
-                            <div className="text-xl sm:text-2xl md:text-3xl font-bold text-blue-600 whitespace-nowrap">
-                              {formatNumber(dateFilteredCalls.filter(c => c.outcome === 'no-answer').length)}
-                            </div>
-                            <p className="text-sm text-muted-foreground mt-2">Follow-Ups</p>
-                          </CardContent>
-                        </Card>
-                        <Card>
-                          <CardContent className="pt-6 text-center">
-                            <div className="text-xl sm:text-2xl md:text-3xl font-bold text-red-600 whitespace-nowrap">
-                              {formatNumber(dateFilteredCalls.filter(c => (c.outcome || '').toLowerCase() === 'failed').length)}
-                            </div>
-                            <p className="text-sm text-muted-foreground mt-2">Failed</p>
-                          </CardContent>
-                        </Card>
-                        <Card>
-                          <CardContent className="pt-6 text-center">
-                            <div className="text-xl sm:text-2xl md:text-3xl font-bold text-orange-600 whitespace-nowrap">
-                              {formatNumber(dateFilteredCalls.filter(c => c.outcome === 'busy').length)}
-                            </div>
-                            <p className="text-sm text-muted-foreground mt-2">Busy</p>
-                          </CardContent>
-                        </Card>
-                      </div>
-                    </div>
-
                   {/* Talk Time Stats - Side by Side */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Average Talk Time */}
@@ -2170,6 +2099,80 @@ export default function ManagerDashboard() {
                     </Card>
                   </div>
 
+                  {/* Calls Analysis */}
+                  <div>
+                    <h3 className="text-lg font-semibold mb-4">Calls Analysis</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {/* High Closure Probability Candidates */}
+                      <Card className="bg-green-100">
+                        <CardContent className="pt-6 text-center">
+                          <div className="text-xl sm:text-2xl md:text-3xl font-bold whitespace-nowrap">
+                            {formatNumber(dateFilteredAnalyses.filter(a => (a.closure_probability || 0) >= 85).length)}
+                          </div>
+                          <p className="text-sm text-muted-foreground mt-2">High Closure (85%+)</p>
+                        </CardContent>
+                      </Card>
+
+                      {/* High-Risk Candidates */}
+                      <Card className="bg-orange-100">
+                        <CardContent className="pt-6 text-center">
+                          <div className="text-xl sm:text-2xl md:text-3xl font-bold whitespace-nowrap">
+                            {formatNumber(dateFilteredAnalyses.filter(a => {
+                              const risk = parseFloat(a.candidate_acceptance_risk) || 0;
+                              return risk >= 40;
+                            }).length)}
+                          </div>
+                          <p className="text-sm text-muted-foreground mt-2">
+                            {company?.industry?.toLowerCase() === 'hr' ? 'High-Risk (40%+)' : 'High-Risk (40%+)'}
+                          </p>
+                        </CardContent>
+                      </Card>
+
+                      {/* Call Quality Score */}
+                      <Card className="bg-purple-100">
+                        <CardContent className="pt-6 text-center">
+                          <div className="text-xl sm:text-2xl md:text-3xl font-bold whitespace-nowrap">
+                            {dateFilteredAnalyses.length > 0
+                              ? Math.round(dateFilteredAnalyses.reduce((sum, a) => sum + (a.call_quality_score || 0), 0) / dateFilteredAnalyses.length)
+                              : 0}%
+                          </div>
+                          <p className="text-sm text-muted-foreground mt-2">Call Quality Score</p>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  </div>
+
+                  {/* Candidate Status */}
+                  <div>
+                    <h3 className="text-lg font-semibold mb-4">Candidate Status</h3>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <Card>
+                        <CardContent className="pt-6 text-center">
+                          <div className="text-xl sm:text-2xl md:text-3xl font-bold whitespace-nowrap">{formatNumber(new Set(dateFilteredCalls.map(c => c.lead_id)).size)}</div>
+                          <p className="text-sm text-muted-foreground mt-2">Total Candidates</p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="pt-6 text-center">
+                          <div className="text-4xl font-bold text-gray-400">--</div>
+                          <p className="text-sm text-muted-foreground mt-2">Converted</p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="pt-6 text-center">
+                          <div className="text-4xl font-bold text-gray-400">--</div>
+                          <p className="text-sm text-muted-foreground mt-2">Pending</p>
+                        </CardContent>
+                      </Card>
+                      <Card>
+                        <CardContent className="pt-6 text-center">
+                          <div className="text-4xl font-bold text-gray-400">--</div>
+                          <p className="text-sm text-muted-foreground mt-2">Rejected</p>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  </div>
+
                   {/* Top 5 Longest Calls */}
                   <Card>
                     <CardHeader>
@@ -2196,7 +2199,7 @@ export default function ManagerDashboard() {
                             return (
                               <div key={call.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                                 <div className="flex items-center gap-3 flex-1">
-                                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold text-sm">
+                                  <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold text-sm mr-2">
                                     {index + 1}
                                   </div>
                                   <div className="flex-1 min-w-0">
@@ -2847,7 +2850,7 @@ export default function ManagerDashboard() {
                                   : 'bg-orange-50 border-orange-200'
                               }`}
                             >
-                              <div className="flex items-center space-x-4">
+                              <div className="flex items-center space-x-4 flex-1">
                                 <Checkbox
                                   checked={selectedLeadIds.has(lead.id)}
                                   onCheckedChange={(checked) => {
@@ -3048,7 +3051,11 @@ export default function ManagerDashboard() {
                           </CardHeader>
                           <CardContent>
                             <div className="text-sm font-medium">
-                              {new Date(selectedLeadGroup.created_at).toLocaleDateString()}
+                              {new Date(selectedLeadGroup.created_at).toLocaleDateString('en-US', { 
+                                month: 'short', 
+                                day: 'numeric', 
+                                year: 'numeric' 
+                              })}
                             </div>
                           </CardContent>
                         </Card>
@@ -3075,7 +3082,7 @@ export default function ManagerDashboard() {
                               <SelectContent>
                                 <SelectItem value="select" disabled>Choose employee...</SelectItem>
                                 {employees.map((employee) => (
-                                  <SelectItem key={employee.user_id} value={employee.user_id}>
+                                  <SelectItem key={employee.id} value={employee.id}>
                                     {employee.full_name}
                                   </SelectItem>
                                 ))}
@@ -3100,7 +3107,7 @@ export default function ManagerDashboard() {
                           ) : (
                             <div className="space-y-4">
                               {leads.filter(lead => lead.group_id === selectedLeadGroup.id).map((lead) => {
-                                const assignedEmployee = employees.find(emp => emp.user_id === lead.assigned_to || emp.id === lead.assigned_to);
+                                const assignedEmployee = employees.find(emp => emp.user_id === lead.assigned_to);
                                 
                                 return (
                                   <div key={lead.id} className="flex items-center justify-between p-4 border rounded-lg">
@@ -3644,7 +3651,7 @@ export default function ManagerDashboard() {
                       >
                         Previous
                       </Button>
-                      <span className="px-3 py-1 text-sm">
+                      <span className="text-sm text-gray-600 px-3">
                         Page {callHistoryPage} of {totalPages}
                       </span>
                       <Button
@@ -3960,14 +3967,6 @@ export default function ManagerDashboard() {
             <TabsContent value="reports" className="space-y-6">
               <ManagerReportsPage />
             </TabsContent>
-
-            {(() => {
-              console.log('ManagerDashboard - company:', company);
-              console.log('ManagerDashboard - manager:', manager);
-              console.log('ManagerDashboard - manager?.id:', manager?.id);
-              console.log('ManagerDashboard - company?.industry:', company?.industry);
-              return null;
-            })()}
 
             <TabsContent value="clients" className="space-y-6">
               <ClientsPage managerId={manager?.id} />
@@ -4375,37 +4374,7 @@ export default function ManagerDashboard() {
                 <Button type="button" variant="outline" onClick={() => setIsAssignLeadModalOpen(false)}>
                   Cancel
                 </Button>
-                <Button 
-                  onClick={async () => {
-                    if (!editingLead) return;
-                    try {
-                      const { error } = await supabase
-                        .from('leads')
-                        .update({
-                          assigned_to: editingLead.assigned_to === "unassigned" ? null : editingLead.assigned_to,
-                        })
-                        .eq('id', editingLead.id);
-
-                      if (error) throw error;
-
-                      toast({
-                        title: 'Success',
-                        description: 'Lead assigned successfully!',
-                      });
-
-                      setEditingLead(null);
-                      setIsAssignLeadModalOpen(false);
-                      fetchData();
-                    } catch (error: any) {
-                      console.error('Error assigning lead:', error);
-                      toast({
-                        title: 'Error',
-                        description: error.message || 'Failed to assign lead. Please try again.',
-                        variant: 'destructive',
-                      });
-                    }
-                  }}
-                >
+                <Button type="submit" disabled={!editingLead}>
                   Assign Lead
                 </Button>
               </div>
@@ -4430,13 +4399,13 @@ export default function ManagerDashboard() {
                 value={bulkAssignEmployeeId} 
                 onValueChange={setBulkAssignEmployeeId}
               >
-                <SelectTrigger id="bulkAssignEmployee">
+                <SelectTrigger className="w-full">
                   <SelectValue placeholder="Select employee" />
                 </SelectTrigger>
                 <SelectContent>
                   {employees.map((employee) => (
                     <SelectItem key={employee.id} value={employee.id}>
-                      {employee.full_name || employee.email}
+                      {employee.full_name}
                     </SelectItem>
                   ))}
                 </SelectContent>
