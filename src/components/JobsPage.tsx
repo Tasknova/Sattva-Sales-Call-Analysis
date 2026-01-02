@@ -57,6 +57,8 @@ interface JobsPageProps {
 export default function JobsPage({ managerId, readOnly = false }: JobsPageProps = {}) {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterClient, setFilterClient] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<string>("none");
   const [currentPage, setCurrentPage] = useState(1);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<Job | null>(null);
@@ -104,15 +106,27 @@ export default function JobsPage({ managerId, readOnly = false }: JobsPageProps 
     positions_available: 1
   });
 
-  const filteredJobs = jobs?.filter(job => {
+  let filteredJobs = jobs?.filter(job => {
     const matchesSearch = job.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       job.location?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       job.clients?.name.toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = filterStatus === "all" || job.status === filterStatus;
+    const matchesClient = filterClient === "all" || job.client_id === filterClient;
     
-    return matchesSearch && matchesStatus;
+    return matchesSearch && matchesStatus && matchesClient;
   }) || [];
+
+  // Apply sorting
+  if (sortBy === "client-asc") {
+    filteredJobs = [...filteredJobs].sort((a, b) => 
+      (a.clients?.name || "").localeCompare(b.clients?.name || "")
+    );
+  } else if (sortBy === "client-desc") {
+    filteredJobs = [...filteredJobs].sort((a, b) => 
+      (b.clients?.name || "").localeCompare(a.clients?.name || "")
+    );
+  }
 
   // Pagination
   const itemsPerPage = 10;
@@ -129,6 +143,16 @@ export default function JobsPage({ managerId, readOnly = false }: JobsPageProps 
 
   const handleFilterChange = (value: string) => {
     setFilterStatus(value);
+    setCurrentPage(1);
+  };
+
+  const handleClientFilterChange = (value: string) => {
+    setFilterClient(value);
+    setCurrentPage(1);
+  };
+
+  const handleSortChange = (value: string) => {
+    setSortBy(value);
     setCurrentPage(1);
   };
 
@@ -379,6 +403,19 @@ export default function JobsPage({ managerId, readOnly = false }: JobsPageProps 
                 className="pl-8"
               />
             </div>
+            <Select value={filterClient} onValueChange={handleClientFilterChange}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Filter by client" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Clients</SelectItem>
+                {clients?.map((client) => (
+                  <SelectItem key={client.id} value={client.id}>
+                    {client.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Select value={filterStatus} onValueChange={handleFilterChange}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Filter by status" />
@@ -391,6 +428,16 @@ export default function JobsPage({ managerId, readOnly = false }: JobsPageProps 
                 <SelectItem value="closed">Closed</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={sortBy} onValueChange={handleSortChange}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Sort by" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No Sorting</SelectItem>
+                <SelectItem value="client-asc">Client (A-Z)</SelectItem>
+                <SelectItem value="client-desc">Client (Z-A)</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {filteredJobs.length === 0 ? (
@@ -398,9 +445,9 @@ export default function JobsPage({ managerId, readOnly = false }: JobsPageProps 
               <Briefcase className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-lg font-semibold mb-2">No jobs found</h3>
               <p className="text-muted-foreground mb-4">
-                {searchTerm || filterStatus !== "all" ? "No jobs match your criteria." : "Add your first job listing to get started."}
+                {searchTerm || filterStatus !== "all" || filterClient !== "all" ? "No jobs match your criteria." : "Add your first job listing to get started."}
               </p>
-              {!searchTerm && filterStatus === "all" && (
+              {!searchTerm && filterStatus === "all" && filterClient === "all" && (
                 <Button onClick={handleOpenAddModal}>
                   <Plus className="h-4 w-4 mr-2" />
                   Add Your First Job
