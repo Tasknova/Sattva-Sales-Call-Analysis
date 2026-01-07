@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Users, UserPlus, MoreHorizontal, Eye, Edit, Shield, Trash2 } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
@@ -25,6 +26,7 @@ interface UserItem {
   email?: string;
   password?: string | null;
   manager_id?: string | null;
+  manager_name?: string;
   is_active?: boolean;
   created_at?: string;
   updated_at?: string;
@@ -63,6 +65,15 @@ export default function UsersTab({
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false);
   const [addUserType, setAddUserType] = useState<'manager' | 'employee'>('manager');
   const [isAddEmployeeModalOpen, setIsAddEmployeeModalOpen] = useState(false);
+  
+  // Form states
+  const [newUserForm, setNewUserForm] = useState({
+    full_name: '',
+    email: '',
+    password: '',
+    department: '',
+    manager_id: ''
+  });
 
   useEffect(() => {
     if (initialView) {
@@ -88,7 +99,7 @@ export default function UsersTab({
 
       const { data: employeesData, error: employeesError } = await supabase
         .from('employees')
-        .select(`id, user_id, company_id, full_name, email, password, manager_id, is_active, created_at, updated_at, manager:managers!manager_id(full_name, department)`)
+        .select(`id, user_id, company_id, full_name, email, password, manager_id, is_active, created_at, updated_at, managers(full_name, department)`)
         .eq('company_id', userRole.company_id)
         .eq('is_active', true);
 
@@ -118,6 +129,7 @@ export default function UsersTab({
         company_id: employee.company_id,
         role: 'employee',
         manager_id: employee.manager_id,
+        manager_name: employee.managers?.full_name || 'Unknown',
         is_active: employee.is_active,
         created_at: employee.created_at,
         updated_at: employee.updated_at,
@@ -179,6 +191,80 @@ export default function UsersTab({
       return matchesSearch && matchesManager;
     });
   }, [employees, searchTerm, selectedManagerFilter]);
+
+  const handleAddManager = async () => {
+    if (!newUserForm.full_name || !newUserForm.email || !newUserForm.password) {
+      toast({ title: 'Error', description: 'Please fill in all required fields', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: newUserForm.email,
+        password: newUserForm.password,
+        options: { data: { role: 'manager' } }
+      });
+
+      if (authError) throw authError;
+
+      const { error: managerError } = await supabase.from('managers').insert({
+        user_id: authData.user!.id,
+        company_id: userRole?.company_id,
+        full_name: newUserForm.full_name,
+        email: newUserForm.email,
+        password: newUserForm.password,
+        department: newUserForm.department || null,
+        is_active: true
+      });
+
+      if (managerError) throw managerError;
+
+      toast({ title: 'Success', description: 'Manager added successfully' });
+      setIsAddUserModalOpen(false);
+      setNewUserForm({ full_name: '', email: '', password: '', department: '', manager_id: '' });
+      fetchUsers();
+    } catch (error: any) {
+      console.error('Error adding manager:', error);
+      toast({ title: 'Error', description: error.message || 'Failed to add manager', variant: 'destructive' });
+    }
+  };
+
+  const handleAddEmployee = async () => {
+    if (!newUserForm.full_name || !newUserForm.email || !newUserForm.password || !newUserForm.manager_id) {
+      toast({ title: 'Error', description: 'Please fill in all required fields', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: newUserForm.email,
+        password: newUserForm.password,
+        options: { data: { role: 'employee' } }
+      });
+
+      if (authError) throw authError;
+
+      const { error: employeeError } = await supabase.from('employees').insert({
+        user_id: authData.user!.id,
+        company_id: userRole?.company_id,
+        full_name: newUserForm.full_name,
+        email: newUserForm.email,
+        password: newUserForm.password,
+        manager_id: newUserForm.manager_id,
+        is_active: true
+      });
+
+      if (employeeError) throw employeeError;
+
+      toast({ title: 'Success', description: 'Employee added successfully' });
+      setIsAddEmployeeModalOpen(false);
+      setNewUserForm({ full_name: '', email: '', password: '', department: '', manager_id: '' });
+      fetchUsers();
+    } catch (error: any) {
+      console.error('Error adding employee:', error);
+      toast({ title: 'Error', description: error.message || 'Failed to add employee', variant: 'destructive' });
+    }
+  };
 
   if (loading) {
     return (
@@ -326,7 +412,7 @@ export default function UsersTab({
                   <div>
                     <h4 className="font-medium">{employee.profile?.full_name || `Employee ${employee.user_id.slice(0, 8)}`}</h4>
                     <p className="text-sm text-muted-foreground">{employee.profile?.email || `ID: ${employee.user_id}`}</p>
-                    <p className="text-xs text-muted-foreground">Managed by: {managers.find(m => m.id === employee.manager_id)?.profile?.full_name || 'Unknown'}</p>
+                    <p className="text-xs text-muted-foreground">Managed by: {employee.manager_name || managers.find(m => m.id === employee.manager_id)?.profile?.full_name || 'Unknown'}</p>
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
@@ -349,6 +435,124 @@ export default function UsersTab({
         )}
         </div>
       )}
+
+      {/* Add Manager Modal */}
+      <Dialog open={isAddUserModalOpen} onOpenChange={setIsAddUserModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Manager</DialogTitle>
+            <DialogDescription>Create a new manager account for your organization</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="manager_full_name">Full Name *</Label>
+              <Input
+                id="manager_full_name"
+                value={newUserForm.full_name}
+                onChange={(e) => setNewUserForm({ ...newUserForm, full_name: e.target.value })}
+                placeholder="Enter full name"
+              />
+            </div>
+            <div>
+              <Label htmlFor="manager_email">Email *</Label>
+              <Input
+                id="manager_email"
+                type="email"
+                value={newUserForm.email}
+                onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value })}
+                placeholder="manager@example.com"
+              />
+            </div>
+            <div>
+              <Label htmlFor="manager_password">Password *</Label>
+              <Input
+                id="manager_password"
+                type="password"
+                value={newUserForm.password}
+                onChange={(e) => setNewUserForm({ ...newUserForm, password: e.target.value })}
+                placeholder="Enter password"
+              />
+            </div>
+            <div>
+              <Label htmlFor="manager_department">Department</Label>
+              <Select value={newUserForm.department} onValueChange={(value) => setNewUserForm({ ...newUserForm, department: value })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select department" />
+                </SelectTrigger>
+                <SelectContent>
+                  {DEPARTMENT_OPTIONS.map((dept) => (
+                    <SelectItem key={dept.value} value={dept.value}>{dept.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddUserModalOpen(false)}>Cancel</Button>
+            <Button onClick={handleAddManager}>Add Manager</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Employee Modal */}
+      <Dialog open={isAddEmployeeModalOpen} onOpenChange={setIsAddEmployeeModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Employee</DialogTitle>
+            <DialogDescription>Create a new employee account and assign to a manager</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="employee_full_name">Full Name *</Label>
+              <Input
+                id="employee_full_name"
+                value={newUserForm.full_name}
+                onChange={(e) => setNewUserForm({ ...newUserForm, full_name: e.target.value })}
+                placeholder="Enter full name"
+              />
+            </div>
+            <div>
+              <Label htmlFor="employee_email">Email *</Label>
+              <Input
+                id="employee_email"
+                type="email"
+                value={newUserForm.email}
+                onChange={(e) => setNewUserForm({ ...newUserForm, email: e.target.value })}
+                placeholder="employee@example.com"
+              />
+            </div>
+            <div>
+              <Label htmlFor="employee_password">Password *</Label>
+              <Input
+                id="employee_password"
+                type="password"
+                value={newUserForm.password}
+                onChange={(e) => setNewUserForm({ ...newUserForm, password: e.target.value })}
+                placeholder="Enter password"
+              />
+            </div>
+            <div>
+              <Label htmlFor="employee_manager">Assign to Manager *</Label>
+              <Select value={newUserForm.manager_id} onValueChange={(value) => setNewUserForm({ ...newUserForm, manager_id: value })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select manager" />
+                </SelectTrigger>
+                <SelectContent>
+                  {managers.map((manager) => (
+                    <SelectItem key={manager.id} value={manager.id}>
+                      {manager.profile?.full_name || manager.user_id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddEmployeeModalOpen(false)}>Cancel</Button>
+            <Button onClick={handleAddEmployee}>Add Employee</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

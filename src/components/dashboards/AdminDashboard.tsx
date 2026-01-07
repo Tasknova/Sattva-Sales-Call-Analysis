@@ -520,13 +520,14 @@ export default function AdminDashboard() {
 
       // Transform employees data to match expected format
       const employeesWithProfiles = employeesData?.map(employee => {
-        console.log('Transforming employee:', employee.full_name, 'Password:', employee.password);
+        console.log('Transforming employee:', employee.full_name, 'Password:', employee.password, 'Manager:', employee.manager);
         return {
           id: employee.id,
           user_id: employee.user_id,
           company_id: employee.company_id,
           role: 'employee',
           manager_id: employee.manager_id,
+          manager_name: employee.manager?.full_name || 'Unknown',
           is_active: employee.is_active,
           created_at: employee.created_at,
           updated_at: employee.updated_at,
