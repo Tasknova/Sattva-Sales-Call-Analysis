@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { getAccessibleRecordingUrl } from "@/lib/s3";
 import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -184,6 +185,14 @@ interface Analysis {
   };
 }
 
+interface RecordingRow {
+  id: string;
+  recording_key?: string | null;
+  aws_s3_url?: string | null;
+  recording_url?: string | null;
+  updated_at?: string;
+}
+
 import EmployeeAnalysisPage from "@/pages/EmployeeAnalysisPage";
 export default function EmployeeDashboard() {
   const location = useLocation();
@@ -240,6 +249,8 @@ export default function EmployeeDashboard() {
   const [jobs, setJobs] = useState<any[]>([]);
   const [isCallDetailsModalOpen, setIsCallDetailsModalOpen] = useState(false);
   const [selectedCallDetails, setSelectedCallDetails] = useState<Call | null>(null);
+  const [selectedCallRecordingUrl, setSelectedCallRecordingUrl] = useState<string | null>(null);
+  const [isLoadingSelectedCallRecordingUrl, setIsLoadingSelectedCallRecordingUrl] = useState(false);
   const [nextFollowUpTime, setNextFollowUpTime] = useState("");
   const [analysisFileName, setAnalysisFileName] = useState("");
   
@@ -1023,8 +1034,47 @@ Please provide insights that are specific, actionable, and tailored to these met
 
   const handleViewCallDetails = (call: Call) => {
     setSelectedCallDetails(call);
+    setSelectedCallRecordingUrl(null);
+    setIsLoadingSelectedCallRecordingUrl(true);
     setIsCallDetailsModalOpen(true);
   };
+
+  const loadSelectedCallRecordingUrl = async (callHistoryId: string) => {
+    setIsLoadingSelectedCallRecordingUrl(true);
+    try {
+      const { data, error } = await supabase
+        .from('recordings')
+        .select('id, recording_key, aws_s3_url, recording_url, updated_at')
+        .eq('call_history_id', callHistoryId)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+
+      const latestRecording = (data?.[0] as RecordingRow | undefined) || null;
+      const accessibleUrl = await getAccessibleRecordingUrl(
+        latestRecording?.aws_s3_url,
+        null,
+        3600,
+        latestRecording?.recording_key || latestRecording?.id,
+      );
+
+      setSelectedCallRecordingUrl(accessibleUrl || null);
+    } catch (error) {
+      console.error('Error loading selected call recording URL:', error);
+      setSelectedCallRecordingUrl(null);
+    } finally {
+      setIsLoadingSelectedCallRecordingUrl(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isCallDetailsModalOpen || !selectedCallDetails?.id) {
+      return;
+    }
+
+    loadSelectedCallRecordingUrl(selectedCallDetails.id);
+  }, [isCallDetailsModalOpen, selectedCallDetails?.id]);
 
   const handleDeleteCall = async (callId: string) => {
     if (window.confirm('Are you sure you want to delete this call? This will also delete any related analysis records.')) {
@@ -4338,7 +4388,16 @@ Please provide insights that are specific, actionable, and tailored to these met
       </Dialog>
 
       {/* Call Details Dialog */}
-      <Dialog open={isCallDetailsModalOpen} onOpenChange={setIsCallDetailsModalOpen}>
+      <Dialog
+        open={isCallDetailsModalOpen}
+        onOpenChange={(open) => {
+          setIsCallDetailsModalOpen(open);
+          if (!open) {
+            setSelectedCallRecordingUrl(null);
+            setIsLoadingSelectedCallRecordingUrl(false);
+          }
+        }}
+      >
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Call Details</DialogTitle>
@@ -4424,7 +4483,7 @@ Please provide insights that are specific, actionable, and tailored to these met
               </div>
 
               {/* Recording URL */}
-              {selectedCallDetails.exotel_recording_url && (
+              {(isLoadingSelectedCallRecordingUrl || selectedCallRecordingUrl) && (
                 <div className="border rounded-lg p-4 bg-orange-50">
                   <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
                     <Headphones className="h-5 w-5" />
@@ -4433,20 +4492,35 @@ Please provide insights that are specific, actionable, and tailored to these met
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-gray-600">URL:</span>
-                      <a 
-                        href={selectedCallDetails.exotel_recording_url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                      {selectedCallRecordingUrl ? (
+                        <a
+                          href={selectedCallRecordingUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                        >
+                          Open Recording
+                          <LinkIcon className="h-3 w-3" />
+                        </a>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">Preparing secure recording link...</span>
+                      )}
+                      <Button
+                        onClick={() => selectedCallDetails?.id && loadSelectedCallRecordingUrl(selectedCallDetails.id)}
+                        disabled={isLoadingSelectedCallRecordingUrl}
+                        size="sm"
+                        variant="outline"
                       >
-                        Open Recording
-                        <LinkIcon className="h-3 w-3" />
-                      </a>
+                        <RefreshCw className={`h-3 w-3 mr-1 ${isLoadingSelectedCallRecordingUrl ? 'animate-spin' : ''}`} />
+                        {isLoadingSelectedCallRecordingUrl ? 'Loading...' : 'Refresh'}
+                      </Button>
                     </div>
-                    <audio controls className="w-full mt-2">
-                      <source src={selectedCallDetails.exotel_recording_url} type="audio/mpeg" />
-                      Your browser does not support the audio element.
-                    </audio>
+                    {selectedCallRecordingUrl ? (
+                      <audio controls className="w-full mt-2">
+                        <source src={selectedCallRecordingUrl} type="audio/mpeg" />
+                        Your browser does not support the audio element.
+                      </audio>
+                    ) : null}
                   </div>
                 </div>
               )}

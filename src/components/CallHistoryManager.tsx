@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { getAccessibleRecordingUrl } from "@/lib/s3";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,6 +77,14 @@ interface Analysis {
   };
 }
 
+interface RecordingRow {
+  id: string;
+  recording_key?: string | null;
+  aws_s3_url?: string | null;
+  recording_url?: string | null;
+  updated_at?: string;
+}
+
 interface CallHistoryManagerProps {
   companyId: string;
   managerId?: string;
@@ -98,6 +107,8 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
   const [analysisFileName, setAnalysisFileName] = useState("");
   const [isCallDetailsModalOpen, setIsCallDetailsModalOpen] = useState(false);
   const [callDetailsData, setCallDetailsData] = useState<Call | null>(null);
+  const [callDetailsRecordingUrl, setCallDetailsRecordingUrl] = useState<string | null>(null);
+  const [isLoadingCallDetailsRecording, setIsLoadingCallDetailsRecording] = useState(false);
   const [expandedFollowUps, setExpandedFollowUps] = useState<Set<string>>(new Set());
   const [processingCalls, setProcessingCalls] = useState<Set<string>>(new Set());
   const [dateRange, setDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({
@@ -293,10 +304,49 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
     fetchData();
   }, [userRole?.company_id]);
 
+  const loadCallDetailsRecordingUrl = async (callHistoryId: string) => {
+    setIsLoadingCallDetailsRecording(true);
+    try {
+      const { data, error } = await supabase
+        .from('recordings')
+        .select('id, recording_key, aws_s3_url, recording_url, updated_at')
+        .eq('call_history_id', callHistoryId)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+
+      const latest = (data?.[0] as RecordingRow | undefined) || null;
+      const signedUrl = await getAccessibleRecordingUrl(
+        latest?.aws_s3_url,
+        null,
+        3600,
+        latest?.recording_key || latest?.id,
+      );
+
+      setCallDetailsRecordingUrl(signedUrl || null);
+    } catch (error) {
+      console.error('Error loading call details recording URL:', error);
+      setCallDetailsRecordingUrl(null);
+    } finally {
+      setIsLoadingCallDetailsRecording(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!isCallDetailsModalOpen || !callDetailsData?.id) {
+      return;
+    }
+
+    loadCallDetailsRecordingUrl(callDetailsData.id);
+  }, [isCallDetailsModalOpen, callDetailsData?.id]);
+
   // Auto-refresh disabled - use manual Refresh button instead
 
   const handleViewCallDetails = (call: Call) => {
     setCallDetailsData(call);
+    setCallDetailsRecordingUrl(null);
+    setIsLoadingCallDetailsRecording(true);
     setIsCallDetailsModalOpen(true);
   };
 
@@ -1194,7 +1244,16 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
       </Dialog>
 
       {/* Call Details Dialog */}
-      <Dialog open={isCallDetailsModalOpen} onOpenChange={setIsCallDetailsModalOpen}>
+      <Dialog
+        open={isCallDetailsModalOpen}
+        onOpenChange={(open) => {
+          setIsCallDetailsModalOpen(open);
+          if (!open) {
+            setCallDetailsRecordingUrl(null);
+            setIsLoadingCallDetailsRecording(false);
+          }
+        }}
+      >
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Call Details</DialogTitle>
@@ -1290,7 +1349,7 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
               </div>
 
               {/* Recording URL */}
-              {callDetailsData.exotel_recording_url && (
+              {(isLoadingCallDetailsRecording || callDetailsRecordingUrl) && (
                 <div className="border rounded-lg p-4 bg-orange-50">
                   <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
                     <Headphones className="h-5 w-5" />
@@ -1299,20 +1358,35 @@ export default function CallHistoryManager({ companyId, managerId }: CallHistory
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-gray-600">URL:</span>
-                      <a 
-                        href={callDetailsData.exotel_recording_url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                      {callDetailsRecordingUrl ? (
+                        <a
+                          href={callDetailsRecordingUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                        >
+                          Open Recording
+                          <LinkIcon className="h-3 w-3" />
+                        </a>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">Preparing secure recording link...</span>
+                      )}
+                      <Button
+                        onClick={() => callDetailsData?.id && loadCallDetailsRecordingUrl(callDetailsData.id)}
+                        disabled={isLoadingCallDetailsRecording}
+                        size="sm"
+                        variant="outline"
                       >
-                        Open Recording
-                        <LinkIcon className="h-3 w-3" />
-                      </a>
+                        <RefreshCw className={`h-3 w-3 mr-1 ${isLoadingCallDetailsRecording ? 'animate-spin' : ''}`} />
+                        {isLoadingCallDetailsRecording ? 'Loading...' : 'Refresh'}
+                      </Button>
                     </div>
-                    <audio controls className="w-full mt-2">
-                      <source src={callDetailsData.exotel_recording_url} type="audio/mpeg" />
-                      Your browser does not support the audio element.
-                    </audio>
+                    {callDetailsRecordingUrl ? (
+                      <audio controls className="w-full mt-2">
+                        <source src={callDetailsRecordingUrl} type="audio/mpeg" />
+                        Your browser does not support the audio element.
+                      </audio>
+                    ) : null}
                   </div>
                 </div>
               )}

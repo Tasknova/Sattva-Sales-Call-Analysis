@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { extractRecordingUrl, fetchExotelCallDetails } from '../lib/exotel';
+import { getAccessibleRecordingUrl } from '../lib/s3';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -42,13 +44,23 @@ interface CallHistoryRecord {
   };
 }
 
+interface RecordingRow {
+  id: string;
+  recording_key: string | null;
+  aws_s3_url: string | null;
+  recording_url: string | null;
+  updated_at: string;
+}
+
 const CallDetails: React.FC = () => {
   const { callId } = useParams<{ callId: string }>();
   const navigate = useNavigate();
   const { toast } = useToast();
   const [callData, setCallData] = useState<CallHistoryRecord | null>(null);
+  const [activeRecordingUrl, setActiveRecordingUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshingRecordingUrl, setRefreshingRecordingUrl] = useState(false);
 
   useEffect(() => {
     if (callId) {
@@ -73,6 +85,8 @@ const CallDetails: React.FC = () => {
       if (error) throw error;
 
       setCallData(data);
+      const s3Url = await loadRecordingUrlFromRecordings(data.id);
+      setActiveRecordingUrl(s3Url || null);
     } catch (error: any) {
       console.error('Error fetching call details:', error);
       toast({
@@ -86,6 +100,20 @@ const CallDetails: React.FC = () => {
     }
   };
 
+  const loadRecordingUrlFromRecordings = async (callHistoryRecordId: string) => {
+    const { data, error } = await supabase
+      .from('recordings')
+      .select('id, recording_key, aws_s3_url, recording_url, updated_at')
+      .eq('call_history_id', callHistoryRecordId)
+      .order('updated_at', { ascending: false })
+      .limit(1);
+
+    if (error) throw error;
+
+    const latest = (data?.[0] as RecordingRow | undefined) || null;
+    return await getAccessibleRecordingUrl(latest?.aws_s3_url, null, 3600, latest?.recording_key || latest?.id);
+  };
+
   const refreshFromExotel = async () => {
     if (!callData) return;
 
@@ -93,25 +121,7 @@ const CallDetails: React.FC = () => {
       setRefreshing(true);
 
       // 1. Fetch latest call details from Exotel via Edge Function
-      const response = await fetch(
-        `https://lsuuivbaemjqmtztrjqq.supabase.co/functions/v1/exotel-proxy/calls/${callData.exotel_call_sid}?company_id=${callData.company_id}`,
-        {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            // Supabase Edge Functions require a valid JWT; use anon key like other callers
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxzdXVpdmJhZW1qcW10enRyanFxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTc0OTUzMjMsImV4cCI6MjA3MzA3MTMyM30.0geG3EgNNZ5wH2ClKzZ_lwUgJlHRXr1CxcXo80ehVGM'}`,
-          },
-        }
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-      }
-
-      const exotelData = await response.json();
+      const exotelData = await fetchExotelCallDetails(callData.exotel_call_sid, callData.company_id);
       const call = exotelData.Call || exotelData; // handle both shapes
 
       // 2. Map Exotel response into our schema
@@ -139,6 +149,8 @@ const CallDetails: React.FC = () => {
       if (error) throw error;
 
       setCallData(data as CallHistoryRecord);
+      const s3Url = await loadRecordingUrlFromRecordings(callData.id);
+      setActiveRecordingUrl(s3Url || null);
 
       toast({
         title: 'Refreshed',
@@ -153,6 +165,75 @@ const CallDetails: React.FC = () => {
       });
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const refreshRecordingUrl = async () => {
+    if (!callData) return;
+
+    if (!callData.exotel_call_sid) {
+      toast({
+        title: 'Missing Call SID',
+        description: 'This call does not have an Exotel call ID to refresh recording URL.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      setRefreshingRecordingUrl(true);
+      const s3Url = await loadRecordingUrlFromRecordings(callData.id);
+      if (s3Url) {
+        setActiveRecordingUrl(s3Url);
+        toast({
+          title: 'S3 URL Loaded',
+          description: 'Recording URL refreshed from recordings table.',
+        });
+        return;
+      }
+
+      const exotelData = await fetchExotelCallDetails(callData.exotel_call_sid, callData.company_id);
+      const freshRecordingUrl = extractRecordingUrl(exotelData);
+
+      if (!freshRecordingUrl) {
+        throw new Error('No S3 URL found and Exotel did not return a fresh recording URL for this call.');
+      }
+
+      const accessibleFreshUrl = await getAccessibleRecordingUrl(freshRecordingUrl, null, 3600);
+
+      const { data, error } = await supabase
+        .from('call_history')
+        .update({
+          exotel_recording_url: freshRecordingUrl,
+          exotel_response: exotelData.Call || exotelData,
+        })
+        .eq('id', callData.id)
+        .select(`
+          *,
+          leads:lead_id(name, email, contact),
+          employees:employee_id(full_name, email)
+        `)
+        .single();
+
+      if (error) throw error;
+
+      setCallData(data as CallHistoryRecord);
+      setActiveRecordingUrl(accessibleFreshUrl || null);
+      toast({
+        title: accessibleFreshUrl ? 'Fresh URL Ready' : 'Recording Not Yet Accessible',
+        description: accessibleFreshUrl
+          ? 'Recording URL refreshed successfully from S3.'
+          : 'Exotel returned a URL, but no accessible S3 object could be signed yet.',
+      });
+    } catch (error: any) {
+      console.error('Error refreshing recording URL:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to refresh recording URL.',
+        variant: 'destructive',
+      });
+    } finally {
+      setRefreshingRecordingUrl(false);
     }
   };
 
@@ -375,29 +456,40 @@ const CallDetails: React.FC = () => {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {callData.exotel_recording_url ? (
+                {activeRecordingUrl ? (
                   <>
                     <audio controls className="w-full">
-                      <source src={callData.exotel_recording_url} type="audio/mpeg" />
+                      <source src={activeRecordingUrl} type="audio/mpeg" />
                       Your browser does not support the audio element.
                     </audio>
-                    <Button
-                      variant="outline"
-                      onClick={() => window.open(callData.exotel_recording_url, '_blank')}
-                      className="w-full"
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      Download Recording
-                    </Button>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => window.open(activeRecordingUrl, '_blank')}
+                        className="w-full"
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Download Recording
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={refreshRecordingUrl}
+                        className="w-full"
+                        disabled={refreshingRecordingUrl}
+                      >
+                        <RefreshCw className={`h-4 w-4 mr-2 ${refreshingRecordingUrl ? 'animate-spin' : ''}`} />
+                        {refreshingRecordingUrl ? 'Refreshing...' : 'Get Fresh URL'}
+                      </Button>
+                    </div>
                     <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded break-all">
                       <strong>Recording URL:</strong>{' '}
                       <a
-                        href={callData.exotel_recording_url || '#'}
+                        href={activeRecordingUrl || '#'}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-blue-600 underline break-all"
                       >
-                        {callData.exotel_recording_url}
+                        {activeRecordingUrl}
                       </a>
                     </div>
                   </>
@@ -411,6 +503,15 @@ const CallDetails: React.FC = () => {
                     <p className="text-xs text-gray-400 mt-2">
                       This could be due to Exotel configuration or call type settings.
                     </p>
+                    <Button
+                      variant="outline"
+                      className="mt-4"
+                      onClick={refreshRecordingUrl}
+                      disabled={refreshingRecordingUrl}
+                    >
+                      <RefreshCw className={`h-4 w-4 mr-2 ${refreshingRecordingUrl ? 'animate-spin' : ''}`} />
+                      {refreshingRecordingUrl ? 'Refreshing...' : 'Try Fetch Fresh URL'}
+                    </Button>
                   </div>
                 )}
               </div>

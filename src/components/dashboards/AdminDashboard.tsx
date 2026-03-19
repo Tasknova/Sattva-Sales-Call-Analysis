@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, lazy, Suspense } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { getAccessibleRecordingUrl } from "@/lib/s3";
 import { formatNumber } from "@/lib/utils";
 import { format } from "date-fns";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -184,6 +185,8 @@ export default function AdminDashboard() {
   const [callOutcomeFilter, setCallOutcomeFilter] = useState<string>('all');
   const [selectedCallForDetails, setSelectedCallForDetails] = useState<any>(null);
   const [isCallDetailsModalOpen, setIsCallDetailsModalOpen] = useState(false);
+  const [selectedCallRecordingUrl, setSelectedCallRecordingUrl] = useState<string | null>(null);
+  const [isLoadingSelectedCallRecordingUrl, setIsLoadingSelectedCallRecordingUrl] = useState(false);
   const [selectedManagerFilterLeads, setSelectedManagerFilterLeads] = useState<string>('all');
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [generatedCredentials, setGeneratedCredentials] = useState<UserCredentials | null>(null);
@@ -318,6 +321,47 @@ export default function AdminDashboard() {
   });
   const [newFromNumber, setNewFromNumber] = useState("");
 
+  const loadSelectedCallRecordingUrl = async (call: any) => {
+    if (!call?.id) {
+      setSelectedCallRecordingUrl(null);
+      return;
+    }
+
+    try {
+      setIsLoadingSelectedCallRecordingUrl(true);
+
+      const { data, error } = await supabase
+        .from('recordings')
+        .select('id, recording_key, aws_s3_url, recording_url, updated_at')
+        .eq('call_history_id', call.id)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+
+      const latestRecording = data?.[0];
+      if (!latestRecording) {
+        setSelectedCallRecordingUrl(null);
+        return;
+      }
+
+      const preferredKey = latestRecording.recording_key || latestRecording.id;
+      const accessibleUrl = await getAccessibleRecordingUrl(
+        latestRecording.aws_s3_url,
+        null,
+        3600,
+        preferredKey,
+      );
+
+      setSelectedCallRecordingUrl(accessibleUrl || null);
+    } catch (error) {
+      console.error('Failed to load selected call recording URL:', error);
+      setSelectedCallRecordingUrl(null);
+    } finally {
+      setIsLoadingSelectedCallRecordingUrl(false);
+    }
+  };
+
   // Fetch company data
   const fetchCompanyData = async () => {
     if (!userRole?.company_id) return;
@@ -419,6 +463,14 @@ export default function AdminDashboard() {
       fetchPhoneAssignments();
     }
   }, [userRole, company]);
+
+  useEffect(() => {
+    if (isCallDetailsModalOpen && selectedCallForDetails) {
+      loadSelectedCallRecordingUrl(selectedCallForDetails);
+      return;
+    }
+    setSelectedCallRecordingUrl(null);
+  }, [isCallDetailsModalOpen, selectedCallForDetails?.id]);
 
   // Initialize profile and company data
   useEffect(() => {
@@ -5003,29 +5055,48 @@ export default function AdminDashboard() {
                         </div>
                       </div>
 
-                      {selectedCallForDetails.exotel_recording_url && (
+                      {(isLoadingSelectedCallRecordingUrl || selectedCallRecordingUrl) && (
                         <div className="border rounded-lg p-4 bg-orange-50">
                           <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
                             <Headphones className="h-5 w-5" />
                             Recording
                           </h3>
                           <div className="space-y-2">
+                            {isLoadingSelectedCallRecordingUrl && !selectedCallRecordingUrl ? (
+                              <p className="text-sm text-muted-foreground">Preparing secure recording link...</p>
+                            ) : null}
                             <div className="flex items-center gap-2">
                               <span className="text-sm font-medium text-gray-600">URL:</span>
-                              <a
-                                href={selectedCallForDetails.exotel_recording_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                              {selectedCallRecordingUrl ? (
+                                <a
+                                  href={selectedCallRecordingUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                                >
+                                  Open Recording
+                                  <LinkIcon className="h-3 w-3" />
+                                </a>
+                              ) : (
+                                <span className="text-sm text-muted-foreground">Not available yet</span>
+                              )}
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => loadSelectedCallRecordingUrl(selectedCallForDetails)}
+                                disabled={isLoadingSelectedCallRecordingUrl}
                               >
-                                Open Recording
-                                <LinkIcon className="h-3 w-3" />
-                              </a>
+                                <RefreshCw className={`h-3 w-3 mr-1 ${isLoadingSelectedCallRecordingUrl ? 'animate-spin' : ''}`} />
+                                {isLoadingSelectedCallRecordingUrl ? 'Loading...' : 'Refresh'}
+                              </Button>
                             </div>
-                            <audio controls className="w-full mt-2">
-                              <source src={selectedCallForDetails.exotel_recording_url} type="audio/mpeg" />
-                              Your browser does not support the audio element.
-                            </audio>
+                            {selectedCallRecordingUrl ? (
+                              <audio controls className="w-full mt-2">
+                                <source src={selectedCallRecordingUrl} type="audio/mpeg" />
+                                Your browser does not support the audio element.
+                              </audio>
+                            ) : null}
                           </div>
                         </div>
                       )}

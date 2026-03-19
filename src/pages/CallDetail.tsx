@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
+import { extractRecordingUrl, fetchExotelCallDetails } from "@/lib/exotel";
+import { getAccessibleRecordingUrl } from "@/lib/s3";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Phone, Mail, User as UserIcon, Calendar, Clock, Headphones, FileText, ArrowLeft, PhoneCall, PlayCircle, Link as LinkIcon } from "lucide-react";
+import { Phone, Mail, User as UserIcon, Calendar, Clock, Headphones, FileText, ArrowLeft, PhoneCall, PlayCircle, Link as LinkIcon, RefreshCw } from "lucide-react";
 
 function useQuery() {
   const { search } = useLocation();
@@ -18,10 +20,26 @@ export default function CallDetail() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [record, setRecord] = useState<any | null>(null);
+  const [recordingUrl, setRecordingUrl] = useState<string | null>(null);
+  const [refreshingRecording, setRefreshingRecording] = useState(false);
 
   const callHistoryId = query.get("id");
   const leadId = query.get("leadId");
   const employeeId = query.get("employeeId");
+
+  const loadRecordingUrlFromRecordings = async (callHistoryRecordId: string) => {
+    const { data, error } = await supabase
+      .from("recordings")
+      .select("id, recording_key, aws_s3_url, recording_url, updated_at")
+      .eq("call_history_id", callHistoryRecordId)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+
+    if (error) throw error;
+
+    const latest = data?.[0];
+    return await getAccessibleRecordingUrl(latest?.aws_s3_url, null, 3600, latest?.recording_key || latest?.id);
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -58,7 +76,15 @@ export default function CallDetail() {
         }
 
         if (resp.error) throw resp.error;
-        setRecord(resp.data || null);
+        const currentRecord = resp.data || null;
+        setRecord(currentRecord);
+
+        if (currentRecord?.id) {
+          const s3Url = await loadRecordingUrlFromRecordings(currentRecord.id);
+          setRecordingUrl(s3Url || null);
+        } else {
+          setRecordingUrl(null);
+        }
       } catch (error: any) {
         console.error("Failed to fetch call details:", error);
         toast({ title: "Error", description: error.message || "Failed to load details", variant: "destructive" });
@@ -111,6 +137,71 @@ export default function CallDetail() {
   
   const startTime = formatCallDateTime(record.exotel_start_time);
   const endTime = formatCallDateTime(record.exotel_end_time);
+  const activeRecordingUrl = recordingUrl;
+
+  const refreshRecordingUrl = async () => {
+    try {
+      setRefreshingRecording(true);
+
+      const s3Url = await loadRecordingUrlFromRecordings(record.id);
+      if (s3Url) {
+        setRecordingUrl(s3Url);
+        toast({
+          title: "S3 URL Loaded",
+          description: "Recording URL refreshed from recordings table.",
+        });
+        return;
+      }
+
+      if (!record?.exotel_call_sid) {
+        throw new Error("No S3 URL found in recordings table and missing Exotel call ID.");
+      }
+
+      const exotelData = await fetchExotelCallDetails(record.exotel_call_sid, record.company_id);
+      const freshUrl = extractRecordingUrl(exotelData);
+
+      if (!freshUrl) {
+        throw new Error("Exotel did not return a fresh recording URL.");
+      }
+
+      const accessibleFreshUrl = await getAccessibleRecordingUrl(freshUrl, null, 3600);
+
+      const call = exotelData?.Call || exotelData;
+      const updatedFields = {
+        exotel_response: call,
+        exotel_recording_url: freshUrl,
+        exotel_status: call.Status || call.status || record.exotel_status,
+        exotel_duration: call.Duration ?? call.duration ?? record.exotel_duration,
+        exotel_start_time: call.StartTime || call.start_time || record.exotel_start_time,
+        exotel_end_time: call.EndTime || call.end_time || record.exotel_end_time,
+      };
+
+      const { error } = await supabase
+        .from("call_history")
+        .update(updatedFields)
+        .eq("id", record.id);
+
+      if (error) throw error;
+
+      setRecord((prev: any) => ({ ...prev, ...updatedFields }));
+      setRecordingUrl(accessibleFreshUrl || null);
+      toast({
+        title: accessibleFreshUrl ? "Fresh URL Ready" : "Recording Not Yet Accessible",
+        description: accessibleFreshUrl
+          ? "Recording URL has been refreshed from S3."
+          : "Exotel returned a URL, but no accessible S3 object could be signed yet.",
+      });
+    } catch (error: any) {
+      console.error("Failed to refresh recording URL:", error);
+      toast({
+        title: "Refresh Failed",
+        description: error.message || "Could not fetch a fresh recording URL.",
+        variant: "destructive",
+      });
+    } finally {
+      setRefreshingRecording(false);
+    }
+  };
 
   return (
     <div className="min-h-screen p-6">
@@ -207,30 +298,40 @@ export default function CallDetail() {
             <CardTitle className="flex items-center gap-2"><PlayCircle className="h-5 w-5" /> Call Recording</CardTitle>
           </CardHeader>
           <CardContent>
-            {record.exotel_recording_url ? (
+            {activeRecordingUrl ? (
               <div className="space-y-3">
                 <div className="flex items-start gap-2 text-sm">
                   <LinkIcon className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
                   <div className="flex-1 min-w-0">
                     <span className="font-medium">Recording URL:</span>
                     <div className="mt-1 p-2 bg-muted rounded border text-xs break-all">
-                      {record.exotel_recording_url}
+                      {activeRecordingUrl}
                     </div>
                   </div>
                 </div>
                 <div className="flex gap-2">
                   <Button 
-                    onClick={() => window.open(record.exotel_recording_url, '_blank')} 
+                    onClick={() => window.open(activeRecordingUrl, '_blank')} 
                     className="gap-2"
                     size="sm"
                   >
                     <PlayCircle className="h-4 w-4" />
                     Play Recording
                   </Button>
+                  <Button
+                    variant="outline"
+                    onClick={refreshRecordingUrl}
+                    size="sm"
+                    className="gap-2"
+                    disabled={refreshingRecording}
+                  >
+                    <RefreshCw className={`h-4 w-4 ${refreshingRecording ? 'animate-spin' : ''}`} />
+                    {refreshingRecording ? 'Refreshing...' : 'Get Fresh URL'}
+                  </Button>
                   <Button 
                     variant="outline"
                     onClick={() => {
-                      navigator.clipboard.writeText(record.exotel_recording_url);
+                      navigator.clipboard.writeText(activeRecordingUrl);
                       toast({ title: "Copied!", description: "Recording URL copied to clipboard" });
                     }}
                     size="sm"
@@ -242,7 +343,19 @@ export default function CallDetail() {
                 </div>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">No recording available for this call</p>
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">No recording available for this call</p>
+                <Button
+                  variant="outline"
+                  onClick={refreshRecordingUrl}
+                  size="sm"
+                  className="gap-2"
+                  disabled={refreshingRecording}
+                >
+                  <RefreshCw className={`h-4 w-4 ${refreshingRecording ? 'animate-spin' : ''}`} />
+                  {refreshingRecording ? 'Refreshing...' : 'Try Fetch Fresh URL'}
+                </Button>
+              </div>
             )}
           </CardContent>
         </Card>
